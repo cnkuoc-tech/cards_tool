@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>團拆訂單表格生成器 - Ning's Card</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+      padding: 10px;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+
+    h1 {
+      color: #1e3c72;
+      margin-bottom: 10px;
+      font-size: 24px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+
+    /* 手機優化 */
+    @media (max-width: 768px) {
+      body {
+        padding: 5px;
+      }
+
+      .container {
+        padding: 15px;
+        border-radius: 8px;
+      }
+
+      h1 {
+        font-size: 20px;
+      }
+
+      .subtitle {
+        font-size: 12px;
+      }
+
+      .form-section {
+        padding: 15px;
+      }
+
+      .row {
+        grid-template-columns: 1fr !important;
+      }
+
+      .item-row {
+        grid-template-columns: 1fr !important;
+      }
+
+      .btn {
+        width: 100%;
+        margin: 5px 0 !important;
+      }
+
+      .btn-secondary {
+        margin-left: 0 !important;
+      }
+
+      .btn-remove {
+        width: 100%;
+        margin-left: 0 !important;
+        margin-top: 10px;
+      }
+
+      table {
+        font-size: 11px;
+      }
+
+      th, td {
+        padding: 6px 4px;
+      }
+
+      input, select, textarea {
+        font-size: 16px; /* 防止 iOS 自動縮放 */
+      }
+
+      h3 {
+        font-size: 18px;
+      }
+    }
+
+    /* 平板優化 */
+    @media (min-width: 769px) and (max-width: 1024px) {
+      .container {
+        padding: 25px;
+      }
+
+      h1 {
+        font-size: 26px;
+      }
+    }
+
+    .form-section {
+      background: #f8f9fa;
+      padding: 25px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 5px;
+      color: #333;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #ff7b00;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+    }
+
+    .btn {
+      background: linear-gradient(135deg, #ff7b00, #ff9d42);
+      color: white;
+      border: none;
+      padding: 12px 30px;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(255,123,0,0.3);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .btn-secondary {
+      background: #6c757d;
+      margin-left: 10px;
+    }
+
+    .btn-add {
+      background: #28a745;
+      font-size: 14px;
+      padding: 8px 20px;
+      margin-top: 10px;
+    }
+
+    .btn-remove {
+      background: #dc3545;
+      font-size: 12px;
+      padding: 5px 15px;
+      margin-left: 10px;
+    }
+
+    .items-container {
+      margin-top: 20px;
+    }
+
+    .item-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr auto;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 10px;
+      padding: 15px;
+      background: white;
+      border-radius: 6px;
+      border: 2px solid #e0e0e0;
+    }
+
+    .output-section {
+      margin-top: 30px;
+    }
+
+    .table-output {
+      overflow-x: auto;
+      margin-top: 15px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+    }
+
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border: 1px solid #dee2e6;
+      font-size: 13px;
+    }
+
+    th {
+      background: #1e3c72;
+      color: white;
+      font-weight: 600;
+    }
+
+    td {
+      background: white;
+    }
+
+    .copy-btn {
+      background: #007bff;
+      margin-top: 15px;
+    }
+
+    .success-message {
+      background: #d4edda;
+      color: #155724;
+      padding: 12px 20px;
+      border-radius: 6px;
+      margin-top: 15px;
+      display: none;
+      border: 1px solid #c3e6cb;
+    }
+
+    .info-box {
+      background: #fff3cd;
+      color: #856404;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      border-left: 4px solid #ffc107;
+    }
+
+    .highlight {
+      color: #ff7b00;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⚾️ 團拆訂單表格生成器</h1>
+    <p class="subtitle">Ning's Card - 快速生成團拆訂單表格</p>
+
+    <div class="info-box">
+      💡 <strong>使用說明：</strong>方法1: 直接貼上訂單文字自動解析 | 方法2: 手動填寫資料
+    </div>
+
+    <div class="form-section" style="background: #e3f2fd;">
+      <h3 style="margin-bottom: 15px; color: #1e3c72;">⚡ 快速貼上模式</h3>
+      
+      <div class="form-group">
+        <label>選擇格式</label>
+        <select id="pasteFormat" style="max-width: 300px;">
+          <option value="random">隨機模式 (1.訂購人 2.訂購人...)</option>
+          <option value="pyt">隊伍標售 (隊伍\t價格\t名單)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>貼上訂單文字</label>
+        <textarea id="quickPaste" rows="12" placeholder="【隨機模式範例】
+[Ning-024]2025 Topps chrome Cosmic hobby*4 random team
+一柱2100
+1.Tttt
+2.Tttt
+3.貓
+4.貓
+...
+
+【隊伍標售範例】
+[Ning-025]2024 Topps Chrome Baseball PYT
+隊伍	價格	名單
+道奇	12400	韋恩
+運動家	12400	迷途小卡奴
+國民	8000	韋恩
+..." style="font-family: monospace;"></textarea>
+      </div>
+      <button class="btn" onclick="parseQuickText()">🚀 自動解析並生成</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('quickPaste').value = ''">🗑️ 清空</button>
+    </div>
+
+    <div style="text-align: center; margin: 20px 0; color: #999;">
+      ── 或手動填寫 ──
+    </div>
+
+    <div class="form-section">
+      <h3 style="margin-bottom: 20px; color: #1e3c72;">📋 基本資料</h3>
+      
+      <div class="row">
+        <div class="form-group">
+          <label>訂購人 *</label>
+          <input type="text" id="buyer" placeholder="例: Alex Torres">
+        </div>
+
+        <div class="form-group">
+          <label>團拆編號 *</label>
+          <input type="text" id="breakNumber" placeholder="例: Ning-020">
+        </div>
+
+        <div class="form-group">
+          <label>種類 *</label>
+          <select id="category">
+            <option value="棒球⚾️">棒球⚾️</option>
+            <option value="籃球🏀">籃球🏀</option>
+            <option value="美足🏈">美足🏈</option>
+            <option value="其他">其他</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>團名 *</label>
+        <input type="text" id="breakName" placeholder="例: 2024 bowman draft hobby jumbo *1 + 2025 bowman hobby box*1 mixer">
+      </div>
+
+      <div class="form-group">
+        <label>團拆形式</label>
+        <select id="breakType">
+          <option value="隨機">隨機</option>
+          <option value="PYT">PYT</option>
+          <option value="混合">混合</option>
+          <option value="其他">其他</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h3 style="margin-bottom: 15px; color: #1e3c72;">🛒 訂購品項</h3>
+      
+      <div id="itemsContainer" class="items-container">
+        <!-- 品項會動態添加到這裡 -->
+      </div>
+
+      <button class="btn btn-add" onclick="addItem()">➕ 新增品項</button>
+    </div>
+
+    <div style="margin-top: 30px; text-align: center;">
+      <button class="btn" onclick="generateTable()">✨ 生成表格</button>
+      <button class="btn btn-secondary" onclick="resetForm()">🔄 重置</button>
+    </div>
+
+    <div class="output-section" id="outputSection" style="display: none;">
+      <h3 style="color: #1e3c72; margin-bottom: 15px;">📊 生成結果</h3>
+      <div class="table-output" id="tableOutput"></div>
+      <button class="btn copy-btn" onclick="copyTable()">📋 複製表格</button>
+      <div class="success-message" id="successMessage">✅ 已複製到剪貼簿！</div>
+    </div>
+  </div>
+
+  <script>
+    let itemCount = 0;
+
+    // 初始化：添加一個預設品項
+    window.onload = function() {
+      addItem();
+    };
+
+    function addItem() {
+      itemCount++;
+      const container = document.getElementById('itemsContainer');
+      const itemDiv = document.createElement('div');
+      itemDiv.className = 'item-row';
+      itemDiv.id = `item-${itemCount}`;
+      itemDiv.innerHTML = `
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>品項名稱 *</label>
+          <input type="text" class="item-name" placeholder="例: 隨機-士頓大全人">
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>金額 (NT$) *</label>
+          <input type="number" class="item-price" placeholder="1200" min="0">
+        </div>
+        <div>
+          <button class="btn btn-remove" onclick="removeItem(${itemCount})">🗑️ 移除</button>
+        </div>
+      `;
+      container.appendChild(itemDiv);
+    }
+
+    function removeItem(id) {
+      const item = document.getElementById(`item-${id}`);
+      if (item) {
+        item.remove();
+      }
+      // 如果沒有品項了，自動添加一個
+      const remaining = document.querySelectorAll('.item-row').length;
+      if (remaining === 0) {
+        addItem();
+      }
+    }
+
+    function resetForm() {
+      if (confirm('確定要重置所有內容嗎？')) {
+        document.getElementById('buyer').value = '';
+        document.getElementById('breakNumber').value = '';
+        document.getElementById('category').value = '棒球⚾️';
+        document.getElementById('breakName').value = '';
+        document.getElementById('breakType').value = '隨機';
+        document.getElementById('itemsContainer').innerHTML = '';
+        document.getElementById('outputSection').style.display = 'none';
+        document.getElementById('quickPaste').value = '';
+        itemCount = 0;
+        addItem();
+      }
+    }
+
+    function parseQuickText() {
+      const text = document.getElementById('quickPaste').value.trim();
+      const format = document.getElementById('pasteFormat').value;
+      
+      if (!text) {
+        alert('請貼上訂單文字！');
+        return;
+      }
+
+      if (format === 'random') {
+        parseRandomFormat(text);
+      } else if (format === 'pyt') {
+        parsePYTFormat(text);
+      }
+    }
+
+    function parsePYTFormat(text) {
+      const lines = text.split('\n').map(line => line.trim()).filter(line => line);
+      
+      if (lines.length < 3) {
+        alert('格式不正確！請確認包含: [編號]團名 和 隊伍資料');
+        return;
+      }
+
+      // 解析第一行: [Ning-025]2024 Topps Chrome Baseball PYT
+      const firstLine = lines[0];
+      const breakNumberMatch = firstLine.match(/\[([^\]]+)\]/);
+      const breakNumber = breakNumberMatch ? breakNumberMatch[1] : '';
+      const breakName = firstLine.replace(/\[[^\]]+\]/, '').trim();
+      
+      const breakType = 'PYT';
+      const category = '棒球⚾️';
+
+      // 找到表格開始的位置（跳過標題行 "隊伍 價格 名單"）
+      let dataStartIndex = 1;
+      for (let i = 1; i < lines.length; i++) {
+        if (lines[i].includes('隊伍') && lines[i].includes('價格')) {
+          dataStartIndex = i + 1;
+          break;
+        }
+      }
+
+      // 解析每一行隊伍資料
+      const tableData = [];
+      for (let i = dataStartIndex; i < lines.length; i++) {
+        const line = lines[i];
+        // 分割可能是 Tab 或多個空格
+        const parts = line.split(/\t+|\s{2,}/).filter(p => p);
+        
+        if (parts.length >= 3) {
+          const team = parts[0].trim();
+          const price = parseInt(parts[1].replace(/,/g, ''));
+          const buyer = parts[2].trim();
+          
+          if (team && !isNaN(price) && buyer) {
+            tableData.push({
+              buyer: buyer,
+              breakNumber: breakNumber,
+              category: category,
+              breakName: breakName,
+              breakType: breakType,
+              itemName: `PYT-${team}`,
+              totalPrice: price
+            });
+          }
+        }
+      }
+
+      if (tableData.length === 0) {
+        alert('找不到有效的隊伍資料！請確認格式為: 隊伍 [Tab] 價格 [Tab] 名單');
+        return;
+      }
+
+      // 合併同一個訂購人的多個隊伍
+      const buyerData = {};
+      tableData.forEach(data => {
+        if (!buyerData[data.buyer]) {
+          buyerData[data.buyer] = {
+            buyer: data.buyer,
+            breakNumber: data.breakNumber,
+            category: data.category,
+            breakName: data.breakName,
+            breakType: data.breakType,
+            teams: [],
+            totalPrice: 0
+          };
+        }
+        const teamName = data.itemName.replace('PYT-', '');
+        buyerData[data.buyer].teams.push(teamName);
+        buyerData[data.buyer].totalPrice += data.totalPrice;
+      });
+
+      // 轉換為最終表格格式
+      const finalTableData = [];
+      for (const buyer in buyerData) {
+        const data = buyerData[buyer];
+        const teamsText = data.teams.join('、');
+        finalTableData.push({
+          buyer: data.buyer,
+          breakNumber: data.breakNumber,
+          category: data.category,
+          breakName: data.breakName,
+          breakType: data.breakType,
+          itemName: `PYT-${teamsText}`,
+          totalPrice: data.totalPrice
+        });
+      }
+
+      generateTableFromData(finalTableData);
+    }
+
+    function parseRandomFormat(text) {
+      const lines = text.split('\n').map(line => line.trim()).filter(line => line);
+      
+      if (lines.length < 3) {
+        alert('格式不正確！請確認包含: [編號]團名、一柱金額、訂購人列表');
+        return;
+      }
+
+      // 解析第一行: [Ning-024]2025 Topps chrome Cosmic hobby*4 random team
+      const firstLine = lines[0];
+      const breakNumberMatch = firstLine.match(/\[([^\]]+)\]/);
+      const breakNumber = breakNumberMatch ? breakNumberMatch[1] : '';
+      const breakName = firstLine.replace(/\[[^\]]+\]/, '').trim();
+      
+      // 判斷團拆形式
+      let breakType = '隨機';
+      const lowerName = breakName.toLowerCase();
+      if (lowerName.includes('random') || breakName.includes('隨機')) {
+        breakType = '隨機';
+      } else if (lowerName.includes('pyt') || breakName.includes('標售')) {
+        breakType = 'PYT';
+      }
+
+      // 解析第二行: 一柱2100
+      const priceLine = lines[1];
+      const priceMatch = priceLine.match(/(\d+)/);
+      const pricePerSlot = priceMatch ? parseInt(priceMatch[1]) : 0;
+
+      if (!pricePerSlot) {
+        alert('無法解析金額！請確認第二行格式如: 一柱2100');
+        return;
+      }
+
+      // 解析訂購人列表: 1.Tttt, 2.Tttt, 3.貓...
+      const buyers = [];
+      for (let i = 2; i < lines.length; i++) {
+        const line = lines[i];
+        const match = line.match(/^\d+\.(.+)$/);
+        if (match) {
+          buyers.push(match[1].trim());
+        }
+      }
+
+      if (buyers.length === 0) {
+        alert('找不到訂購人！請確認格式如: 1.訂購人名稱');
+        return;
+      }
+
+      // 統計每個訂購人的數量
+      const buyerCounts = {};
+      buyers.forEach(buyer => {
+        buyerCounts[buyer] = (buyerCounts[buyer] || 0) + 1;
+      });
+
+      // 生成表格數據
+      const tableData = [];
+      for (const [buyer, count] of Object.entries(buyerCounts)) {
+        const itemName = `隨機-${count}柱`;
+        const totalPrice = pricePerSlot * count;
+        tableData.push({
+          buyer: buyer,
+          breakNumber: breakNumber,
+          category: '棒球⚾️',
+          breakName: breakName,
+          breakType: breakType,
+          itemName: itemName,
+          totalPrice: totalPrice
+        });
+      }
+
+      generateTableFromData(tableData);
+    }
+
+    function generateTableFromData(tableData) {
+      if (tableData.length === 0) {
+        alert('沒有資料可以生成！');
+        return;
+      }
+
+      // 生成表格 HTML
+      let tableHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>訂購人</th>
+              <th>團拆編號</th>
+              <th>種類</th>
+              <th>團名</th>
+              <th>團拆形式</th>
+              <th>購買品項</th>
+              <th>總金額</th>
+              <th>已付金額</th>
+              <th>是否已付</th>
+              <th>卡片是否寄出</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      // 為每個訂購人生成一行
+      tableData.forEach(data => {
+        tableHTML += `
+          <tr>
+            <td>${data.buyer}</td>
+            <td>${data.breakNumber}</td>
+            <td>${data.category}</td>
+            <td>${data.breakName}</td>
+            <td>${data.breakType}</td>
+            <td>${data.itemName}</td>
+            <td>${data.totalPrice}</td>
+            <td>0</td>
+            <td>N</td>
+            <td>N</td>
+          </tr>
+        `;
+      });
+
+      tableHTML += `
+          </tbody>
+        </table>
+      `;
+
+      // 顯示結果
+      document.getElementById('tableOutput').innerHTML = tableHTML;
+      document.getElementById('outputSection').style.display = 'block';
+      
+      // 保存數據以供複製使用
+      window.currentTableData = tableData;
+      
+      // 滾動到結果區域
+      document.getElementById('outputSection').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function generateTable() {
+      // 獲取基本資料
+      const buyer = document.getElementById('buyer').value.trim();
+      const breakNumber = document.getElementById('breakNumber').value.trim();
+      const category = document.getElementById('category').value;
+      const breakName = document.getElementById('breakName').value.trim();
+      const breakType = document.getElementById('breakType').value;
+
+      // 驗證必填欄位
+      if (!buyer || !breakNumber || !breakName) {
+        alert('請填寫所有必填欄位（訂購人、團拆編號、團名）！');
+        return;
+      }
+
+      // 獲取所有品項
+      const items = [];
+      const itemRows = document.querySelectorAll('.item-row');
+      
+      itemRows.forEach((row, index) => {
+        const name = row.querySelector('.item-name').value.trim();
+        const price = row.querySelector('.item-price').value.trim();
+        
+        if (name && price) {
+          items.push({
+            name: name,
+            price: parseInt(price)
+          });
+        }
+      });
+
+      if (items.length === 0) {
+        alert('請至少添加一個訂購品項！');
+        return;
+      }
+
+      // 計算總金額
+      const totalPrice = items.reduce((sum, item) => sum + item.price, 0);
+
+      // 生成表格 HTML
+      let tableHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>訂購人</th>
+              <th>團拆編號</th>
+              <th>種類</th>
+              <th>團名</th>
+              <th>團拆形式</th>
+              <th>購買品項</th>
+              <th>總金額</th>
+              <th>已付金額</th>
+              <th>是否已付</th>
+              <th>卡片是否寄出</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      // 為每個品項生成一行
+      items.forEach((item, index) => {
+        const isFirstRow = index === 0;
+        const rowspan = items.length;
+
+        tableHTML += '<tr>';
+        
+        if (isFirstRow) {
+          tableHTML += `<td rowspan="${rowspan}">${buyer}</td>`;
+          tableHTML += `<td rowspan="${rowspan}">${breakNumber}</td>`;
+          tableHTML += `<td rowspan="${rowspan}">${category}</td>`;
+          tableHTML += `<td rowspan="${rowspan}">${breakName}</td>`;
+          tableHTML += `<td rowspan="${rowspan}">${breakType}</td>`;
+        }
+        
+        tableHTML += `<td>${item.name}</td>`;
+        
+        if (isFirstRow) {
+          tableHTML += `<td rowspan="${rowspan}">${totalPrice}</td>`;
+          tableHTML += `<td rowspan="${rowspan}">0</td>`;
+          tableHTML += `<td rowspan="${rowspan}">N</td>`;
+          tableHTML += `<td rowspan="${rowspan}">N</td>`;
+        }
+        
+        tableHTML += '</tr>';
+      });
+
+      tableHTML += `
+          </tbody>
+        </table>
+      `;
+
+      // 顯示結果
+      document.getElementById('tableOutput').innerHTML = tableHTML;
+      document.getElementById('outputSection').style.display = 'block';
+      
+      // 滾動到結果區域
+      document.getElementById('outputSection').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    async function copyTable() {
+      // 檢查是否有快速模式的數據
+      if (window.currentTableData && window.currentTableData.length > 0) {
+        // 使用快速模式的數據
+        let tsvData = '';
+        
+        window.currentTableData.forEach(data => {
+          tsvData += `${data.buyer}\t${data.breakNumber}\t${data.category}\t${data.breakName}\t${data.breakType}\t${data.itemName}\t${data.totalPrice}\t0\tN\tN\n`;
+        });
+
+        try {
+          await navigator.clipboard.writeText(tsvData);
+          const successMsg = document.getElementById('successMessage');
+          successMsg.style.display = 'block';
+          setTimeout(() => {
+            successMsg.style.display = 'none';
+          }, 3000);
+        } catch (err) {
+          alert('複製失敗，請手動選取表格內容複製');
+        }
+        return;
+      }
+
+      // 原本的手動模式複製邏輯
+      const buyer = document.getElementById('buyer').value.trim();
+      const breakNumber = document.getElementById('breakNumber').value.trim();
+      const category = document.getElementById('category').value;
+      const breakName = document.getElementById('breakName').value.trim();
+      const breakType = document.getElementById('breakType').value;
+
+      // 獲取所有品項
+      const items = [];
+      const itemRows = document.querySelectorAll('.item-row');
+      
+      itemRows.forEach(row => {
+        const name = row.querySelector('.item-name').value.trim();
+        const price = row.querySelector('.item-price').value.trim();
+        
+        if (name && price) {
+          items.push({
+            name: name,
+            price: parseInt(price)
+          });
+        }
+      });
+
+      const totalPrice = items.reduce((sum, item) => sum + item.price, 0);
+
+      // 生成 TSV 格式（用 Tab 分隔，可直接貼到 Google Sheets）
+      let tsvData = '';
+      
+      items.forEach((item, index) => {
+        if (index === 0) {
+          // 第一行包含所有合併的欄位
+          tsvData += `${buyer}\t${breakNumber}\t${category}\t${breakName}\t${breakType}\t${item.name}\t${totalPrice}\t0\tN\tN\n`;
+        } else {
+          // 後續行只有品項名稱
+          tsvData += `\t\t\t\t\t${item.name}\t\t\t\t\n`;
+        }
+      });
+
+      try {
+        await navigator.clipboard.writeText(tsvData);
+        const successMsg = document.getElementById('successMessage');
+        successMsg.style.display = 'block';
+        setTimeout(() => {
+          successMsg.style.display = 'none';
+        }, 3000);
+      } catch (err) {
+        alert('複製失敗，請手動選取表格內容複製');
+      }
+    }
+  </script>
+</body>
+</html>
