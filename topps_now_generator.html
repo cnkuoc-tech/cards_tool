@@ -499,49 +499,88 @@
     }
 
     function parseOCRText(text) {
-      // 提取卡號 (Card 數字 或 # 數字)
-      const cardMatch = text.match(/(?:Card|#)\s*(\d+)/i);
-      if (cardMatch) {
-        document.getElementById('cardNumber').value = cardMatch[1];
-      }
-
-      // 解析價格 ($數字.數字)
-      const prices = text.match(/\$\s*(\d+\.?\d*)/g);
-      if (prices && prices.length >= 2) {
-        // 提取 "5 cards $8.00/ea" 和 "10 cards $7.00/ea" 這種格式
-        const lines = text.split('\n');
-        let price5 = null;
-        let price10 = null;
+      console.log('=== OCR 原始文字 ===');
+      console.log(text);
+      console.log('==================');
+      
+      const lines = text.split('\n').map(line => line.trim()).filter(line => line);
+      
+      // 🔍 提取球員名稱和卡號 (通常在標題行，格式: "球員名 - 年份-賽季 NBA Topps NOW® - Card 卡號")
+      let playerName = '';
+      let cardNumber = '';
+      
+      for (const line of lines) {
+        // 匹配 "Stephen Curry - 2025-26 NBA Topps NOW® - Card 101" 這種格式
+        const titleMatch = line.match(/^(.+?)\s*-\s*\d{4}-\d{2}\s+(?:NBA|MLB)?\s*Topps\s*NOW.*?(?:Card\s*)?(\d+)$/i);
+        if (titleMatch) {
+          playerName = titleMatch[1].trim();
+          cardNumber = titleMatch[2];
+          console.log('✅ 找到標題:', playerName, '卡號:', cardNumber);
+          break;
+        }
         
-        for (const line of lines) {
-          if (line.includes('5') && line.includes('card')) {
-            const match = line.match(/\$\s*(\d+\.?\d*)/);
-            if (match) price5 = parseFloat(match[1]);
-          }
-          if (line.includes('10') && line.includes('card')) {
-            const match = line.match(/\$\s*(\d+\.?\d*)/);
-            if (match) price10 = parseFloat(match[1]);
+        // 備用: 只匹配 Card 數字
+        if (!cardNumber) {
+          const cardMatch = line.match(/Card\s*(\d+)/i);
+          if (cardMatch) {
+            cardNumber = cardMatch[1];
+            console.log('✅ 找到卡號:', cardNumber);
           }
         }
         
-        if (price5) document.getElementById('price5').value = price5;
-        if (price10) document.getElementById('price10').value = price10;
+        // 備用: 提取可能的球員名稱 (包含英文字母和空格，長度適中)
+        if (!playerName && line.match(/^[A-Za-z\s\-]{5,50}$/) && !line.toLowerCase().includes('topps') && !line.toLowerCase().includes('nba')) {
+          playerName = line;
+          console.log('✅ 可能的球員名:', playerName);
+        }
+      }
+      
+      if (cardNumber) {
+        document.getElementById('cardNumber').value = cardNumber;
+      }
+      if (playerName) {
+        document.getElementById('itemName').value = playerName;
       }
 
-      // 提取球員名稱（通常在前面幾行，大寫字母較多）
-      const lines = text.split('\n').filter(line => line.trim());
-      for (let i = 0; i < Math.min(5, lines.length); i++) {
-        const line = lines[i].trim();
-        // 尋找看起來像名字的行（包含大寫字母且長度適中）
-        if (line.length > 5 && line.length < 50 && /[A-Z]/.test(line)) {
-          // 清理並設定為品項名稱的基礎
-          const cleaned = line.replace(/[^\w\s-]/g, ' ').trim();
-          if (cleaned && !cleaned.match(/^\d+$/) && !cleaned.toLowerCase().includes('topps')) {
-            document.getElementById('itemName').value = cleaned;
-            break;
+      // 🔍 解析價格 - 重點抓取 "/ea" (每張單價)
+      let price5 = null;
+      let price10 = null;
+      
+      for (const line of lines) {
+        // 匹配 "5 cards $39.99 $8.00/ea" 這種格式
+        const cards5Match = line.match(/5\s*cards?\s*.*?\$(\d+\.?\d*)\s*\/\s*ea/i);
+        if (cards5Match) {
+          price5 = parseFloat(cards5Match[1]);
+          console.log('✅ 5張單價:', price5);
+        }
+        
+        // 匹配 "10 cards $69.99 $7.00/ea" 這種格式
+        const cards10Match = line.match(/10\s*cards?\s*.*?\$(\d+\.?\d*)\s*\/\s*ea/i);
+        if (cards10Match) {
+          price10 = parseFloat(cards10Match[1]);
+          console.log('✅ 10張單價:', price10);
+        }
+        
+        // 備用: 只有 "5 cards" 和價格的情況
+        if (!price5 && line.includes('5') && (line.includes('card') || line.includes('SAVE'))) {
+          const priceMatch = line.match(/\$(\d+\.?\d*)\s*\/\s*ea/i);
+          if (priceMatch) {
+            price5 = parseFloat(priceMatch[1]);
+            console.log('✅ 備用5張單價:', price5);
+          }
+        }
+        
+        if (!price10 && line.includes('10') && (line.includes('card') || line.includes('SAVE'))) {
+          const priceMatch = line.match(/\$(\d+\.?\d*)\s*\/\s*ea/i);
+          if (priceMatch) {
+            price10 = parseFloat(priceMatch[1]);
+            console.log('✅ 備用10張單價:', price10);
           }
         }
       }
+      
+      if (price5) document.getElementById('price5').value = price5.toFixed(2);
+      if (price10) document.getElementById('price10').value = price10.toFixed(2);
 
       // 檢查是否提到特殊卡
       const lowerText = text.toLowerCase();
@@ -554,6 +593,13 @@
       if (lowerText.includes('parallel') || lowerText.includes('refractor')) {
         document.getElementById('canDrawSP').value = 'Y';
       }
+      
+      console.log('=== 解析結果 ===');
+      console.log('球員:', playerName || '未識別');
+      console.log('卡號:', cardNumber || '未識別');
+      console.log('5張單價:', price5 || '未識別');
+      console.log('10張單價:', price10 || '未識別');
+      console.log('================');
     }
 
     function roundToNearest5(num) {
