@@ -2354,13 +2354,13 @@ async function handleGetNotifications(body, supabase) {
             
             if (breakIds.length > 0) {
               try {
-                // 使用 break_id 欄位查詢團拆
-                const breakQueryUrl = `${supabase.url}/rest/v1/breaks?break_id=in.(${breakIds.map(id => `"${encodeURIComponent(id)}"`).join(',')})`;
+                // 🔥 使用 break_id + user_id 查詢團拆（重點：加上user_id過濾以區分不同用戶的同名團拆！）
+                const breakQueryUrl = `${supabase.url}/rest/v1/breaks?break_id=in.(${breakIds.map(id => `"${encodeURIComponent(id)}"`).join(',')})&user_id=eq.${notif.user_id}`;
                 
                 const breaksResponse = await fetch(breakQueryUrl, { headers });
                 relatedBreaks = await breaksResponse.json();
                 
-                console.log('[getNotifications] 團拆查詢結果:', relatedBreaks);
+                console.log('[getNotifications] 團拆查詢結果:', relatedBreaks, '(user_id:', notif.user_id, ')');
                 
                 if (!Array.isArray(relatedBreaks)) {
                   relatedBreaks = [];

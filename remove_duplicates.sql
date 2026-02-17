@@ -47,9 +47,9 @@ ORDER BY cnt DESC;
 -- ================================
 DELETE FROM orders
 WHERE id NOT IN (
-  SELECT MIN(id)
+  SELECT DISTINCT ON (phone, item, card_no, quantity) id
   FROM orders
-  GROUP BY phone, item, card_no, quantity
+  ORDER BY phone, item, card_no, quantity, id
 );
 
 -- ================================
@@ -57,9 +57,9 @@ WHERE id NOT IN (
 -- ================================
 DELETE FROM breaks
 WHERE id NOT IN (
-  SELECT MIN(id)
+  SELECT DISTINCT ON (break_id, user_id) id
   FROM breaks
-  GROUP BY break_id, user_id
+  ORDER BY break_id, user_id, id
 );
 
 -- ================================
@@ -67,9 +67,9 @@ WHERE id NOT IN (
 -- ================================
 DELETE FROM card_details
 WHERE id NOT IN (
-  SELECT MIN(id)
+  SELECT DISTINCT ON (user_id, card_number) id
   FROM card_details
-  GROUP BY user_id, card_number
+  ORDER BY user_id, card_number, id
 );
 
 -- ================================
@@ -77,9 +77,9 @@ WHERE id NOT IN (
 -- ================================
 DELETE FROM users
 WHERE id NOT IN (
-  SELECT MIN(id)
+  SELECT DISTINCT ON (phone) id
   FROM users
-  GROUP BY phone
+  ORDER BY phone, id
 );
 
 -- ================================
@@ -87,9 +87,9 @@ WHERE id NOT IN (
 -- ================================
 DELETE FROM ecpay_records
 WHERE id NOT IN (
-  SELECT MIN(id)
+  SELECT DISTINCT ON (merchant_trade_no) id
   FROM ecpay_records
-  GROUP BY merchant_trade_no
+  ORDER BY merchant_trade_no, id
 );
 
 -- ================================
@@ -133,9 +133,9 @@ WHERE (phone, item, card_no, quantity, total_fee, arrival_status, is_shipped, st
   HAVING COUNT(*) > 1
 )
 AND id NOT IN (
-  SELECT MIN(id)
+  SELECT DISTINCT ON (phone, item, card_no, quantity, total_fee, arrival_status, is_shipped, status, balance_amount) id
   FROM orders
-  GROUP BY phone, item, card_no, quantity, total_fee, arrival_status, is_shipped, status, balance_amount
+  ORDER BY phone, item, card_no, quantity, total_fee, arrival_status, is_shipped, status, balance_amount, id
 );
 
 -- ================================
