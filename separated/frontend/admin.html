@@ -1419,7 +1419,9 @@
       const res = await callAPI('getAllBreaks', {});
       if (res.success) {
         breaksCache = res.breaks || [];
-        renderBreaksList(breaksCache);
+        breaksSortKey = null;
+        breaksSortAsc = true;
+        renderBreaksTable(breaksCache);
       } else {
         alert('載入團拆失敗: ' + res.message);
       }
@@ -1440,121 +1442,155 @@
                (!buyer || bBuyer.includes(buyer));
       });
       
-      renderBreaksList(filtered);
+      renderBreaksTable(filtered);
     }
     
-    function renderBreaksList(breaks) {
-      let html = '<div style="overflow-x: auto;">' +
-        '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">' +
-        '<tr style="background: #f5f5f5; font-weight: bold;">' +
-        '<th style="padding: 10px; border: 1px solid #ddd; text-align: center;"><input type="checkbox" id="breakCheckAll" onchange="toggleAllBreakCheckboxes()" /></th>' +
-        '<th style="padding: 10px; border: 1px solid #ddd; text-align: left;">團拆編號</th>' +
-        '<th style="padding: 10px; border: 1px solid #ddd; text-align: left;">團名</th>' +
-        '<th style="padding: 10px; border: 1px solid #ddd; text-align: left;">種類</th>' +
-        '<th style="padding: 10px; border: 1px solid #ddd; text-align: right;">總團費</th>' +
-        '<th style="padding: 10px; border: 1px solid #ddd; text-align: right;">已付</th>' +
-        '<th style="padding: 10px; border: 1px solid #ddd; text-align: right;">尾款</th>' +
-        '<th style="padding: 10px; border: 1px solid #ddd; text-align: left;">狀態</th>' +
-        '<th style="padding: 10px; border: 1px solid #ddd; text-align: center;">操作</th>' +
-        '</tr>';
+    // 團拆排序與篩選相關變數
+    let breaksSortKey = null;
+    let breaksSortAsc = true;
+    
+    function sortBreaksBy(key) {
+      if (breaksSortKey === key) {
+        breaksSortAsc = !breaksSortAsc;
+      } else {
+        breaksSortKey = key;
+        breaksSortAsc = true;
+      }
       
-      breaks.forEach((b, idx) => {
-        html += '<tr style="border-bottom: 1px solid #eee;">' +
-          '<td style="padding: 10px; border: 1px solid #ddd; text-align: center;"><input type="checkbox" class="break-checkbox" data-break-id="' + (b.id || '') + '" data-break-name="' + (b.name || '').replace(/"/g, '&quot;') + '" data-break-status="' + (b.status || '') + '" data-break-paid="' + (b.paid || 0) + '" /></td>' +
-          '<td style="padding: 10px; border: 1px solid #ddd;">' + (b.break_id || '-') + '</td>' +
-          '<td style="padding: 10px; border: 1px solid #ddd;">' + (b.name || '-') + '</td>' +
-          '<td style="padding: 10px; border: 1px solid #ddd;">' + (b.category || '-') + '</td>' +
-          '<td style="padding: 10px; border: 1px solid #ddd; text-align: right;">NT$ ' + (b.total_fee || 0).toLocaleString() + '</td>' +
-          '<td style="padding: 10px; border: 1px solid #ddd; text-align: right;">NT$ ' + (b.paid || 0).toLocaleString() + '</td>' +
-          '<td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: #e74c3c;">NT$ ' + (b.balance || 0).toLocaleString() + '</td>' +
-          '<td style="padding: 10px; border: 1px solid #ddd;">' + (b.status || '-') + '</td>' +
-          '<td style="padding: 10px; border: 1px solid #ddd; text-align: center;">' +
-          '<button class="break-edit-btn" data-break-id="' + (b.id || '') + '" style="padding: 5px 10px; background: #3498db; color: white; border: none; border-radius: 3px; cursor: pointer; margin-right: 5px;">編輯</button>' +
-          '</td>' +
-          '</tr>';
+      const sorted = [...breaksCache];
+      sorted.sort((a, b) => {
+        let aVal = a[key];
+        let bVal = b[key];
+        
+        if (typeof aVal === 'string') {
+          aVal = aVal.toLowerCase();
+          bVal = bVal.toLowerCase();
+        }
+        
+        if (aVal < bVal) return breaksSortAsc ? -1 : 1;
+        if (aVal > bVal) return breaksSortAsc ? 1 : -1;
+        return 0;
       });
       
-      html += '</table></div>';
+      renderBreaksTable(sorted);
+    }
+    
+    function renderBreaksTable(breaks) {
+      let html = '<table style="width: 100%; border-collapse: collapse;"><tr>';
+      html += `<th style="width: 40px;"><input type="checkbox" id="selectAllBreaks" onchange="toggleSelectAllBreaks(this.checked)"></th>`;
       
-      if (breaks.length > 0) {
-        html += '<div style="margin-top: 20px; display: flex; gap: 10px;">' +
-          '<button onclick="batchUpdateBreaks()" style="padding: 10px 20px; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer;">✓ 批次更新</button>' +
-          '</div>';
-      }
+      const headers = [
+        { key: 'break_id', label: '團拆編號' },
+        { key: 'name', label: '團名' },
+        { key: 'category', label: '類別' },
+        { key: 'total_fee', label: '總團費' },
+        { key: 'paid', label: '已付金額' },
+        { key: 'balance', label: '尾款' },
+        { key: 'status', label: '狀態' }
+      ];
       
-      if (breaks.length === 0) {
-        html = '<p style="text-align: center; color: #999; padding: 40px;">沒有找到相符的團拆記錄</p>';
-      }
+      headers.forEach(h => {
+        let arrow = '';
+        if (breaksSortKey === h.key) {
+          arrow = breaksSortAsc ? ' ▲' : ' ▼';
+        }
+        html += `<th onclick="sortBreaksBy('${h.key}')" style="cursor:pointer; user-select:none;">${h.label}${arrow}</th>`;
+      });
+      html += '<th>操作</th></tr>';
       
+      breaks.forEach(breakItem => {
+        const balance = (breakItem.total_fee || 0) - (breakItem.paid || 0);
+        html += `<tr>
+          <td style="width: 40px;"><input type="checkbox" class="break-checkbox" data-break-id="${breakItem.id}" onchange="updateBreakBatchSelectUI()"></td>
+          <td>${breakItem.break_id || '-'}</td>
+          <td>${breakItem.name || '-'}</td>
+          <td>${breakItem.category || '-'}</td>
+          <td style="text-align: right;">NT$ ${(breakItem.total_fee || 0).toLocaleString()}</td>
+          <td style="text-align: right;">NT$ ${(breakItem.paid || 0).toLocaleString()}</td>
+          <td style="text-align: right; font-weight: bold; color: #e74c3c;">NT$ ${balance.toLocaleString()}</td>
+          <td><strong>${breakItem.status || '未知'}</strong></td>
+          <td>
+            <button class="action-btn btn-edit" data-break-id="${breakItem.id}" data-break-name="${(breakItem.name || '').replace(/"/g, '&quot;')}" data-break-total="${breakItem.total_fee || 0}" data-break-paid="${breakItem.paid || 0}" data-break-status="${breakItem.status || ''}" onclick="handleEditBreakClick(this)">編輯</button>
+          </td>
+        </tr>`;
+      });
+      html += '</table>';
       document.getElementById('breaksList').innerHTML = html;
       
-      // 綁定編輯按鈕
-      document.querySelectorAll('.break-edit-btn').forEach(btn => {
-        btn.onclick = function() {
-          editBreak(this.getAttribute('data-break-id'));
-        };
-      });
+      updateBreakBatchSelectUI();
     }
     
-    function toggleAllBreakCheckboxes() {
-      const checkAll = document.getElementById('breakCheckAll').checked;
-      document.querySelectorAll('.break-checkbox').forEach(cb => {
-        cb.checked = checkAll;
+    function toggleSelectAllBreaks(checked) {
+      document.querySelectorAll('.break-checkbox').forEach(checkbox => {
+        checkbox.checked = checked;
       });
+      updateBreakBatchSelectUI();
     }
     
-    function batchUpdateBreaks() {
-      const checked = Array.from(document.querySelectorAll('.break-checkbox:checked'));
-      if (checked.length === 0) {
-        alert('請選擇要更新的團拆');
+    function updateBreakBatchSelectUI() {
+      const selectedCount = document.querySelectorAll('.break-checkbox:checked').length;
+      const batchContainer = document.getElementById('breakBatchOperationsContainer');
+      
+      if (selectedCount > 0) {
+        if (!batchContainer) {
+          const panel = document.createElement('div');
+          panel.id = 'breakBatchOperationsContainer';
+          panel.style.cssText = 'margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 8px; border-left: 4px solid #3498db;';
+          
+          panel.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+              <span style="font-weight: bold;">已選擇 <span id="breakBatchCount">${selectedCount}</span> 筆團拆</span>
+              <select id="breakBatchStatusSelect" style="padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                <option value="">-- 選擇新狀態 --</option>
+                <option value="待確認">待確認</option>
+                <option value="付款確認中">付款確認中</option>
+                <option value="已結清">已結清</option>
+              </select>
+              <button onclick="batchUpdateBreakStatus()" style="padding: 8px 16px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">批次更新狀態</button>
+              <button onclick="clearBreakSelection()" style="padding: 8px 16px; background: #999; color: white; border: none; border-radius: 4px; cursor: pointer;">取消選擇</button>
+            </div>
+          `;
+          
+          document.getElementById('breaksList').parentNode.insertBefore(panel, document.getElementById('breaksList'));
+        }
+        
+        document.getElementById('breakBatchCount').textContent = selectedCount;
+      } else if (batchContainer) {
+        batchContainer.remove();
+      }
+    }
+    
+    function clearBreakSelection() {
+      document.querySelectorAll('.break-checkbox').forEach(checkbox => {
+        checkbox.checked = false;
+      });
+      document.getElementById('selectAllBreaks').checked = false;
+      updateBreakBatchSelectUI();
+    }
+    
+    async function batchUpdateBreakStatus() {
+      const selectedCheckboxes = document.querySelectorAll('.break-checkbox:checked');
+      const selectedIds = Array.from(selectedCheckboxes).map(cb => cb.dataset.breakId);
+      const newStatus = document.getElementById('breakBatchStatusSelect').value;
+      
+      if (!newStatus) {
+        alert('請選擇新狀態');
         return;
       }
       
-      const newStatus = prompt('請輸入新的狀態:');
-      if (newStatus === null) return;
-      
-      const newPaid = prompt('請輸入新的已付金額（不填則保持原樣）:');
-      
-      checked.forEach(cb => {
-        const breakId = cb.getAttribute('data-break-id');
-        updateBreakData(breakId, {
-          status: newStatus,
-          paid: newPaid ? parseFloat(newPaid) : undefined
-        });
-      });
-    }
-    
-    function editBreak(breakId) {
-      const breakData = breaksCache.find(b => b.id === breakId);
-      if (!breakData) {
-        alert('找不到團拆資料');
+      if (!confirm(`確定要更新 ${selectedIds.length} 筆團拆的狀態為「${newStatus}」？`)) {
         return;
       }
       
-      const newStatus = prompt('請輸入新的狀態 (目前: ' + (breakData.status || '-') + '):', breakData.status || '');
-      if (newStatus === null) return;
-      
-      const newPaid = prompt('請輸入新的已付金額 (目前: ' + (breakData.paid || 0) + '):', breakData.paid || '0');
-      if (newPaid === null) return;
-      
-      updateBreakData(breakId, {
-        status: newStatus,
-        paid: parseFloat(newPaid)
-      });
-    }
-    
-    async function updateBreakData(breakId, updates) {
-      const res = await callAPI('updateBreak', {
-        id: breakId,
-        ...updates
-      });
-      
-      if (res.success) {
-        alert('✅ 團拆資料已更新');
-        loadAllBreaks();
-      } else {
-        alert('❌ 更新失敗: ' + res.message);
+      let successCount = 0;
+      for (const breakId of selectedIds) {
+        const res = await callAPI('updateBreak', { id: breakId, status: newStatus });
+        if (res.success) successCount++;
       }
+      
+      alert(`已更新 ${successCount}/${selectedIds.length} 筆團拆`);
+      clearBreakSelection();
+      loadAllBreaks();
     }
   </script>
 </body>
