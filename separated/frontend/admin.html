@@ -442,6 +442,7 @@
         <button class="menu-btn active" onclick="switchTab('notifications')">📋 對帳管理</button>
         <button class="menu-btn" onclick="switchTab('orders')">📦 訂單管理</button>
         <button class="menu-btn" onclick="switchTab('breaks')">⚾ 團拆管理</button>
+        <button class="menu-btn" onclick="switchTab('addBreaks')" style="background: #27ae60; margin-top: 20px;">➕ 新增團拆</button>
         <button class="menu-btn" onclick="switchTab('users')">👥 用戶管理</button>
         <button class="menu-btn" onclick="switchTab('products')">🎁 商品管理</button>
       </div>
@@ -554,6 +555,106 @@
             <p style="color: #856404; margin-bottom: 15px; font-size: 14px;">刪除所有 password 為 NULL 的重複用戶記錄</p>
             <button class="btn-submit" style="background: #dc3545;" onclick="cleanupDuplicateUsers()">⚠️ 清理重複用戶</button>
           </div>
+        </div>
+
+        <!-- 新增團拆 -->
+        <div class="tab-content" id="addBreaks-tab">
+          <h2 class="section-title">➕ 新增團拆</h2>
+          
+          <div class="form-group">
+            <h3>貼上訂單文字或手動填寫</h3>
+            
+            <div style="margin-bottom: 20px;">
+              <label>選擇模式</label>
+              <select id="inputMode" onchange="switchInputMode()" style="max-width: 300px;">
+                <option value="paste">快速貼上模式</option>
+                <option value="manual">手動填寫模式</option>
+              </select>
+            </div>
+
+            <!-- 快速貼上模式 -->
+            <div id="pasteMode" style="display: block;">
+              <label>選擇格式</label>
+              <select id="pasteFormat" style="max-width: 300px; margin-bottom: 15px;">
+                <option value="random">隨機模式 (1.訂購人 2.訂購人...)</option>
+                <option value="pyt">隊伍標售 (隊伍\t價格\t名單)</option>
+              </select>
+
+              <label>貼上訂單文字</label>
+              <textarea id="orderText" placeholder="【隨機模式範例】
+[Ning-024]2025 Topps chrome Cosmic hobby*4 random team
+一柱2100
+1.Tttt
+2.Tttt
+3.貓
+...
+
+【隊伍標售範例】
+[Ning-025]2024 Topps Chrome Baseball PYT
+隊伍	價格	名單
+道奇	12400	韋恩
+..." rows="12" style="font-family: monospace; margin-bottom: 15px;"></textarea>
+
+              <button class="btn-submit" style="background: #3498db;" onclick="parseAndPreview()">🔍 解析預覽</button>
+            </div>
+
+            <!-- 手動填寫模式 -->
+            <div id="manualMode" style="display: none;">
+              <div class="form-row">
+                <div>
+                  <label>團拆編號 *</label>
+                  <input type="text" id="manualBreakNumber" placeholder="例: Ning-024">
+                </div>
+                <div>
+                  <label>種類</label>
+                  <select id="manualCategory">
+                    <option value="棒球⚾️">棒球⚾️</option>
+                    <option value="籃球🏀">籃球🏀</option>
+                    <option value="美足🏈">美足🏈</option>
+                    <option value="其他">其他</option>
+                  </select>
+                </div>
+              </div>
+
+              <label>團名 *</label>
+              <input type="text" id="manualBreakName" placeholder="例: 2025 bowman draft hobby">
+
+              <label>團拆形式</label>
+              <select id="manualBreakType" style="margin-bottom: 15px;">
+                <option value="隨機">隨機</option>
+                <option value="PYT">PYT</option>
+                <option value="混合">混合</option>
+              </select>
+
+              <div id="manualItemsList"></div>
+              <button class="btn-submit" style="background: #3498db; margin-bottom: 15px;" onclick="addManualItem()">➕ 新增品項</button>
+            </div>
+          </div>
+
+          <!-- 預覽表格 -->
+          <div id="previewSection" style="display: none; margin-top: 30px;">
+            <h3>📊 預覽</h3>
+            <div style="overflow-x: auto;">
+              <table id="previewTable" style="margin-bottom: 20px;">
+                <thead>
+                  <tr>
+                    <th>訂購人</th>
+                    <th>團拆編號</th>
+                    <th>種類</th>
+                    <th>團名</th>
+                    <th>金額</th>
+                  </tr>
+                </thead>
+                <tbody id="previewBody"></tbody>
+              </table>
+            </div>
+            
+            <button class="btn-submit" style="background: #27ae60;" onclick="submitBreaksData()">✨ 確認新增</button>
+            <button class="btn-submit" style="background: #95a5a6;" onclick="cancelPreview()">❌ 取消</button>
+          </div>
+
+          <!-- 結果提示 -->
+          <div id="resultMessage" style="margin-top: 20px; padding: 15px; border-radius: 6px; display: none;"></div>
         </div>
       </div>
     </div>
@@ -1593,6 +1694,249 @@
       alert(`已更新 ${successCount}/${selectedIds.length} 筆團拆`);
       clearBreakSelection();
       loadAllBreaks();
+    }
+
+    // ==================== 新增團拆功能 ====================
+    let currentBreaksPreview = [];
+    let manualItemCount = 0;
+
+    function switchInputMode() {
+      const mode = document.getElementById('inputMode').value;
+      document.getElementById('pasteMode').style.display = mode === 'paste' ? 'block' : 'none';
+      document.getElementById('manualMode').style.display = mode === 'manual' ? 'block' : 'none';
+    }
+
+    function addManualItem() {
+      manualItemCount++;
+      const container = document.getElementById('manualItemsList');
+      const itemDiv = document.createElement('div');
+      itemDiv.style.cssText = 'background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 10px; display: grid; grid-template-columns: 2fr 1fr auto; gap: 10px; align-items: end;';
+      itemDiv.id = `manual-item-${manualItemCount}`;
+      itemDiv.innerHTML = `
+        <div>
+          <label style="margin-bottom: 5px; display: block;">品項名稱</label>
+          <input type="text" class="manual-item-name" placeholder="例: 隨機-士頓大全人" style="width: 100%;">
+        </div>
+        <div>
+          <label style="margin-bottom: 5px; display: block;">金額 (NT$)</label>
+          <input type="number" class="manual-item-price" placeholder="1200" style="width: 100%;">
+        </div>
+        <button type="button" onclick="removeManualItem(${manualItemCount})" style="background: #dc3545; color: white; border: none; padding: 12px 15px; border-radius: 6px; cursor: pointer;">🗑️</button>
+      `;
+      container.appendChild(itemDiv);
+    }
+
+    function removeManualItem(id) {
+      const item = document.getElementById(`manual-item-${id}`);
+      if (item) item.remove();
+    }
+
+    async function parseAndPreview() {
+      const orderText = document.getElementById('orderText').value.trim();
+      const format = document.getElementById('pasteFormat').value;
+
+      if (!orderText) {
+        alert('請輸入訂單文字');
+        return;
+      }
+
+      try {
+        let breaksData = [];
+        
+        if (format === 'random') {
+          breaksData = parseRandomFormat(orderText);
+        } else if (format === 'pyt') {
+          breaksData = parsePYTFormat(orderText);
+        }
+
+        if (breaksData.length === 0) {
+          alert('無法解析訂單文字，請檢查格式');
+          return;
+        }
+
+        currentBreaksPreview = breaksData;
+        renderPreview(breaksData);
+        document.getElementById('previewSection').style.display = 'block';
+      } catch (error) {
+        alert('解析失敗: ' + error.message);
+        console.error(error);
+      }
+    }
+
+    function parseRandomFormat(text) {
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+      if (lines.length < 3) throw new Error('格式不正確');
+
+      const firstLine = lines[0];
+      const breakNumberMatch = firstLine.match(/\[([^\]]+)\]/);
+      const breakNumber = breakNumberMatch ? breakNumberMatch[1] : '';
+      const breakName = firstLine.replace(/\[[^\]]+\]/, '').trim();
+
+      const priceLine = lines[1];
+      const priceMatch = priceLine.match(/(\d+)/);
+      const pricePerSlot = priceMatch ? parseInt(priceMatch[1]) : 0;
+
+      if (!pricePerSlot) throw new Error('無法解析金額');
+
+      const buyers = [];
+      for (let i = 2; i < lines.length; i++) {
+        const match = lines[i].match(/^\d+\.(.+)$/);
+        if (match) buyers.push(match[1].trim());
+      }
+
+      if (buyers.length === 0) throw new Error('找不到訂購人');
+
+      const buyerCounts = {};
+      buyers.forEach(b => {
+        buyerCounts[b] = (buyerCounts[b] || 0) + 1;
+      });
+
+      const breaksData = [];
+      for (const [buyer, count] of Object.entries(buyerCounts)) {
+        breaksData.push({
+          buyer,
+          breakNumber,
+          category: '棒球⚾️',
+          breakName,
+          breakType: '隨機',
+          itemName: `隨機-${count}柱`,
+          totalPrice: pricePerSlot * count
+        });
+      }
+
+      return breaksData;
+    }
+
+    function parsePYTFormat(text) {
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+      if (lines.length < 3) throw new Error('格式不正確');
+
+      const firstLine = lines[0];
+      const breakNumberMatch = firstLine.match(/\[([^\]]+)\]/);
+      const breakNumber = breakNumberMatch ? breakNumberMatch[1] : '';
+      const breakName = firstLine.replace(/\[[^\]]+\]/, '').trim();
+
+      let dataStartIndex = 1;
+      for (let i = 1; i < lines.length; i++) {
+        if (lines[i].includes('隊伍') && lines[i].includes('價格')) {
+          dataStartIndex = i + 1;
+          break;
+        }
+      }
+
+      const tableData = [];
+      for (let i = dataStartIndex; i < lines.length; i++) {
+        const parts = lines[i].split(/\t+|\s{2,}/).filter(p => p);
+        if (parts.length >= 3) {
+          const team = parts[0].trim();
+          const price = parseInt(parts[1].replace(/,/g, ''));
+          const buyer = parts[2].trim();
+          if (team && !isNaN(price) && buyer) {
+            tableData.push({ team, price, buyer });
+          }
+        }
+      }
+
+      if (tableData.length === 0) throw new Error('找不到隊伍資料');
+
+      const buyerData = {};
+      tableData.forEach(data => {
+        if (!buyerData[data.buyer]) {
+          buyerData[data.buyer] = {
+            buyer: data.buyer,
+            breakNumber,
+            category: '棒球⚾️',
+            breakName,
+            breakType: 'PYT',
+            teams: [],
+            totalPrice: 0
+          };
+        }
+        buyerData[data.buyer].teams.push(data.team);
+        buyerData[data.buyer].totalPrice += data.price;
+      });
+
+      const breaksData = [];
+      for (const buyer in buyerData) {
+        const data = buyerData[buyer];
+        breaksData.push({
+          buyer: data.buyer,
+          breakNumber: data.breakNumber,
+          category: data.category,
+          breakName: data.breakName,
+          breakType: data.breakType,
+          itemName: `PYT-${data.teams.join('、')}`,
+          totalPrice: data.totalPrice
+        });
+      }
+
+      return breaksData;
+    }
+
+    function renderPreview(breaksData) {
+      const tbody = document.getElementById('previewBody');
+      tbody.innerHTML = '';
+      breaksData.forEach(b => {
+        const row = tbody.insertRow();
+        row.innerHTML = `
+          <td>${b.buyer}</td>
+          <td>${b.breakNumber}</td>
+          <td>${b.category}</td>
+          <td>${b.breakName}</td>
+          <td>$${b.totalPrice}</td>
+        `;
+      });
+    }
+
+    function cancelPreview() {
+      document.getElementById('previewSection').style.display = 'none';
+      document.getElementById('orderText').value = '';
+      document.getElementById('resultMessage').style.display = 'none';
+      currentBreaksPreview = [];
+    }
+
+    async function submitBreaksData() {
+      if (currentBreaksPreview.length === 0) {
+        alert('沒有資料可提交');
+        return;
+      }
+
+      const resultDiv = document.getElementById('resultMessage');
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '⏳ 正在新增到系統...';
+      resultDiv.style.background = '#fff3cd';
+      resultDiv.style.color = '#856404';
+      resultDiv.style.border = '1px solid #ffeeba';
+
+      try {
+        const res = await callAPI('addBreaksBatch', { breaks: currentBreaksPreview });
+
+        if (res.success) {
+          resultDiv.innerHTML = `
+            ✅ 成功新增 ${res.added?.length || 0} 筆團拆
+            ${res.errors?.length > 0 ? `<br>⚠️ ${res.errors.length} 筆失敗:<br>${res.errors.map(e => `• ${e.buyer} (${e.breakNumber}): ${e.error}`).join('<br>')}` : ''}
+          `;
+          resultDiv.style.background = '#d4edda';
+          resultDiv.style.color = '#155724';
+          resultDiv.style.border = '1px solid #c3e6cb';
+          
+          setTimeout(() => {
+            cancelPreview();
+            switchTab('breaks');
+            loadAllBreaks();
+          }, 2000);
+        } else {
+          resultDiv.innerHTML = `❌ 新增失敗: ${res.message}`;
+          resultDiv.style.background = '#f8d7da';
+          resultDiv.style.color = '#721c24';
+          resultDiv.style.border = '1px solid #f5c6cb';
+        }
+      } catch (error) {
+        resultDiv.innerHTML = `❌ 錯誤: ${error.message}`;
+        resultDiv.style.background = '#f8d7da';
+        resultDiv.style.color = '#721c24';
+        resultDiv.style.border = '1px solid #f5c6cb';
+      }
     }
   </script>
 </body>
