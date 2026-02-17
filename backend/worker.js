@@ -2901,19 +2901,38 @@ async function handleCleanupDuplicateUsers(body, supabase) {
 
 async function handleGetAllBreaks(body, supabase) {
   try {
-    console.log('[getAllBreaks] 查詢所有團拆');
+    console.log('[getAllBreaks] 查詢所有團拆（含用戶信息）');
     
-    const breaksData = await supabase.query('breaks', { order: { column: 'created_at', ascending: false } });
+    const headers = {
+      'apikey': supabase.apiKey,
+      'Authorization': `Bearer ${supabase.apiKey}`,
+      'Content-Type': 'application/json'
+    };
+    
+    // 🔑 關聯 users 表來獲取訂購人信息
+    const queryUrl = `${supabase.url}/rest/v1/breaks?select=*,users:user_id(id,nickname,phone,email)&order=created_at.desc`;
+    
+    const response = await fetch(queryUrl, { headers });
+    const breaksData = await response.json();
     
     if (!Array.isArray(breaksData)) {
+      console.error('[getAllBreaks] 查詢結果非陣列:', breaksData);
       return { success: false, message: '查詢失敗' };
     }
     
     console.log('[getAllBreaks] 共找到 ' + breaksData.length + ' 筆團拆');
     
+    // 格式化數據，將 user_id 替換為用戶信息
+    const formattedBreaks = breaksData.map(b => ({
+      ...b,
+      buyer: b.users?.nickname || b.users?.email || '-',
+      buyerPhone: b.users?.phone || '-',
+      userId: b.user_id
+    }));
+    
     return { 
       success: true, 
-      breaks: breaksData || []
+      breaks: formattedBreaks || []
     };
   } catch (error) {
     console.error('[getAllBreaks] 錯誤:', error);

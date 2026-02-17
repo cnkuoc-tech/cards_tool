@@ -1481,6 +1481,7 @@
       
       const headers = [
         { key: 'break_id', label: '團拆編號' },
+        { key: 'buyer', label: '訂購人' },
         { key: 'name', label: '團名' },
         { key: 'category', label: '類別' },
         { key: 'total_fee', label: '總團費' },
@@ -1503,6 +1504,7 @@
         html += `<tr>
           <td style="width: 40px;"><input type="checkbox" class="break-checkbox" data-break-id="${breakItem.id}" onchange="updateBreakBatchSelectUI()"></td>
           <td>${breakItem.break_id || '-'}</td>
+          <td>${breakItem.buyer || '-'}</td>
           <td>${breakItem.name || '-'}</td>
           <td>${breakItem.category || '-'}</td>
           <td style="text-align: right;">NT$ ${(breakItem.total_fee || 0).toLocaleString()}</td>
