@@ -1,0 +1,1704 @@
+/**
+ * ================================================================
+ * Cloudflare Worker - Ning's Card Store (Supabase 完整版)
+ * ================================================================
+ * 
+ * 目的: 完整移植 backend.js 的所有功能到 Supabase，包含完整前端
+ * 部署: https://supabasefrontdemo.cnkuoc.workers.dev/
+ * 
+ * 資料表結構 (Supabase):
+ * - users: 會員資料
+ * - product_catalog: 商品目錄
+ * - orders: 訂單主檔
+ * - break_credits: 團拆金
+ * - psa_orders: PSA 鑑定訂單
+ * - shipment_records: 出貨記錄
+ * - payment_records: 付款記錄
+ * - daily_fortune: 每日運勢
+ * - email_notifications: 郵件通知記錄
+ * - admin_logs: 管理員操作記錄
+ * 
+ * ================================================================
+ */
+
+// ============================================
+// 📌 完整的前端 HTML（從 worker.html 移植）
+// ============================================
+
+// 注意：這是從 worker.html 複製的完整前端代碼，包含所有功能：
+// - 登入/註冊
+// - 商品瀏覽（Topps Now 單卡 & 卡盒）
+// - 購物車
+// - 訂單查詢
+// - 團拆紀錄
+// - PSA 鑑定
+// - 每日運勢
+// - 會員資料
+const HTML_CONTENT = \`<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8">
+  <title>Ning's Card Store</title>
+  <link rel="icon" type="image/png" href="https://i.postimg.cc/jSFPPTp5/photo-output.png">
+  <style>
+    :root { 
+      --navy: #0a2342; --navy-2: #1c3a63; --orange: #e67e22; --red: #d32f2f; 
+      --bg-light: #f8f9fa; --color-stock: #28a745; 
+    }
+    * { box-sizing: border-box; }
+    body { font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; margin:0; padding-top: 60px; min-height: 100vh; overflow-x: hidden; }
+    
+    /* 浮水印 - 固定在整個視窗上層 */
+    body::after {
+      content: "";
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: url('https://i.postimg.cc/jSFPPTp5/photo-output.png');
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: 40%;
+      z-index: 99999;
+      pointer-events: none;
+      opacity: 0.05;
+    }
+    
+    .app-header { position: fixed; top: 0; left: 0; right: 0; height: 60px; background: linear-gradient(90deg, var(--navy), var(--navy-2)); display: flex; align-items: center; justify-content: space-between; padding: 0 15px; z-index: 2000; box-shadow: 0 2px 5px rgba(0,0,0,0.15); }
+    .header-left { display: flex; align-items: center; gap: 15px; }
+    .header-title { color: white; font-weight: bold; font-size: 18px; letter-spacing: 1px; cursor:pointer; }
+    .menu-btn { background: none; border: none; color: white; font-size: 24px; cursor: pointer; padding: 5px; }
+    .header-right { display: flex; align-items: center; gap: 6px; }
+    
+    .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 280px; background: #fff; z-index: 2500; transform: translateX(-100%); transition: transform 0.3s ease-in-out; box-shadow: 2px 0 10px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 2400; display: none; backdrop-filter: blur(2px); }
+    .sidebar-overlay.show { display: block; }
+
+// ============================================
+// 📌 Supabase 客戶端類別
+// ============================================
+
+class SupabaseClient {
+  constructor(url, key) {
+    this.url = url
+    this.key = key
+  }
+
+  /**
+   * 通用查詢方法
+   */
+  async query(table, options = {}) {
+    let url = `${this.url}/rest/v1/${table}`
+    const params = new URLSearchParams()
+    
+    // select 欄位
+    if (options.select) {
+      params.append('select', options.select)
+    } else {
+      params.append('select', '*')
+    }
+    
+    // eq 條件
+    if (options.eq) {
+      for (const [key, value] of Object.entries(options.eq)) {
+        params.append(key, `eq.${value}`)
+      }
+    }
+    
+    // order 排序
+    if (options.order) {
+      params.append('order', options.order)
+    }
+    
+    // limit 限制
+    if (options.limit) {
+      params.append('limit', options.limit)
+    }
+    
+    if (params.toString()) {
+      url += '?' + params.toString()
+    }
+    
+    const response = await fetch(url, {
+      headers: {
+        'apikey': this.key,
+        'Authorization': `Bearer ${this.key}`,
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    if (!response.ok) {
+      throw new Error(`Supabase query failed: ${response.statusText}`)
+    }
+    
+    return await response.json()
+  }
+
+  /**
+   * 查詢所有資料（無分頁限制）
+   * 用於計算累積張數等需要完整資料的場景
+   */
+  async queryAll(table, options = {}) {
+    let url = `${this.url}/rest/v1/${table}`
+    const params = new URLSearchParams()
+    
+    // select 欄位
+    if (options.select) {
+      params.append('select', options.select)
+    } else {
+      params.append('select', '*')
+    }
+    
+    // eq 條件
+    if (options.eq) {
+      for (const [key, value] of Object.entries(options.eq)) {
+        params.append(key, `eq.${value}`)
+      }
+    }
+    
+    // order 排序
+    if (options.order) {
+      params.append('order', options.order)
+    }
+    
+    if (params.toString()) {
+      url += '?' + params.toString()
+    }
+    
+    const response = await fetch(url, {
+      headers: {
+        'apikey': this.key,
+        'Authorization': `Bearer ${this.key}`,
+        'Content-Type': 'application/json',
+        'Range': '0-999999'  // 設定超大範圍，確保取得所有資料
+      }
+    })
+    
+    if (!response.ok) {
+      throw new Error(`Supabase queryAll failed: ${response.statusText}`)
+    }
+    
+    return await response.json()
+  }
+
+  /**
+   * 插入資料
+   */
+  async insert(table, data) {
+    const url = `${this.url}/rest/v1/${table}`
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'apikey': this.key,
+        'Authorization': `Bearer ${this.key}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(Array.isArray(data) ? data : [data])
+    })
+    
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`Supabase insert failed: ${error}`)
+    }
+    
+    return await response.json()
+  }
+
+  /**
+   * 更新資料
+   */
+  async update(table, match, data) {
+    let url = `${this.url}/rest/v1/${table}`
+    const params = new URLSearchParams()
+    
+    for (const [key, value] of Object.entries(match)) {
+      params.append(key, `eq.${value}`)
+    }
+    
+    url += '?' + params.toString()
+    
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'apikey': this.key,
+        'Authorization': `Bearer ${this.key}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(data)
+    })
+    
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`Supabase update failed: ${error}`)
+    }
+    
+    return await response.json()
+  }
+
+  /**
+   * 刪除資料
+   */
+  async delete(table, match) {
+    let url = `${this.url}/rest/v1/${table}`
+    const params = new URLSearchParams()
+    
+    for (const [key, value] of Object.entries(match)) {
+      params.append(key, `eq.${value}`)
+    }
+    
+    url += '?' + params.toString()
+    
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'apikey': this.key,
+        'Authorization': `Bearer ${this.key}`
+      }
+    })
+    
+    if (!response.ok) {
+      throw new Error(`Supabase delete failed: ${response.statusText}`)
+    }
+    
+    return true
+  }
+}
+
+// ============================================
+// 📌 API 路由處理
+// ============================================
+
+async function handleAPI(request, env) {
+  try {
+    const body = await request.json()
+    const { action } = body
+    const supabase = new SupabaseClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY)
+    
+    console.log(`[API] 收到請求: ${action}`)
+    
+    let result
+    switch (action) {
+      // 會員相關
+      case 'login':
+        result = await handleLogin(body, supabase)
+        break
+      
+      case 'registerUser':
+        result = await handleRegisterUser(body, supabase)
+        break
+      
+      // 商品相關
+      case 'getOrderCatalog':
+      case 'getProducts':
+        result = await handleGetProducts(body, supabase)
+        break
+      
+      // 訂單相關
+      case 'getOrderInfo':
+        result = await handleGetOrderInfo(body, supabase)
+        break
+      
+      case 'addOrderEntriesToMain':
+        result = await handleAddOrder(body, supabase)
+        break
+      
+      case 'getPendingPaymentKeys':
+        result = await handleGetPendingPaymentKeys(body, supabase)
+        break
+      
+      case 'notifyPaymentBulk':
+        result = await handleNotifyPaymentBulk(body, supabase)
+        break
+      
+      case 'submitPaymentNotification':
+        result = await handlePaymentNotification(body, supabase)
+        break
+      
+      case 'notifyProfileUpdate':
+        result = await handleNotifyProfileUpdate(body, supabase)
+        break
+      
+      case 'lookupOrderStatus':
+        result = await handleLookupOrderStatus(body, supabase)
+        break
+      
+      // 團拆金相關
+      case 'getBreakCredit':
+        result = await handleGetBreakCredit(body, supabase)
+        break
+      
+      case 'useBreakCredit':
+        result = await handleUseBreakCredit(body, supabase)
+        break
+      
+      // PSA 鑑定相關
+      case 'submitPsaOrder':
+        result = await handleSubmitPsaOrder(body, supabase)
+        break
+      
+      case 'lookupPsaOrders':
+        result = await handleLookupPsaOrders(body, supabase)
+        break
+      
+      // 每日運勢
+      case 'checkDailyFortune':
+        result = await handleCheckDailyFortune(body, supabase)
+        break
+      
+      case 'saveDailyFortune':
+        result = await handleSaveDailyFortune(body, supabase)
+        break
+      
+      // 出貨相關
+      case 'createShipmentRecord':
+        result = await handleCreateShipmentRecord(body, supabase)
+        break
+      
+      case 'getShipmentRecords':
+        result = await handleGetShipmentRecords(body, supabase)
+        break
+      
+      // 綠界金流
+      case 'createEcpayPayment':
+        result = await handleCreateEcpayPayment(body, supabase)
+        break
+      
+      case 'checkPaymentStatus':
+        result = await handleCheckPaymentStatus(body, supabase)
+        break
+      
+      case 'updateOrderStatusToPending':
+        result = await handleUpdateOrderStatusToPending(body, supabase)
+        break
+      
+      case 'updateBreakStatusToPending':
+        result = await handleUpdateBreakStatusToPending(body, supabase)
+        break
+      
+      // 資料驗證
+      case 'verifyData':
+        result = await handleVerifyData(body, supabase)
+        break
+      
+      default:
+        result = { success: false, message: `未知的 action: ${action}` }
+    }
+    
+    return new Response(JSON.stringify(result), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
+    })
+    
+  } catch (error) {
+    console.error('[API Error]', error)
+    return new Response(JSON.stringify({
+      success: false,
+      message: error.message || '伺服器錯誤'
+    }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
+    })
+  }
+}
+
+// ============================================
+// 📌 會員功能
+// ============================================
+
+/**
+ * 登入
+ */
+async function handleLogin(body, supabase) {
+  const { phone, birthday } = body
+  console.log(`[LOGIN] 嘗試登入: phone=${phone}`)
+  
+  if (!phone || !birthday) {
+    return { success: false, message: '請提供手機號碼和生日' }
+  }
+  
+  // 查詢用戶
+  const users = await supabase.query('users', { eq: { phone } })
+  
+  if (!users || users.length === 0) {
+    return { success: false, message: '找不到此手機號碼的會員資料' }
+  }
+  
+  const user = users[0]
+  
+  // 驗證生日（支援多種格式：MMDD, MM/DD, M/D 等）
+  const userBday = String(user.birthday || '').replace(/\D/g, '').slice(-4)
+  const inputBday = String(birthday).replace(/\D/g, '')
+  
+  if (userBday !== inputBday) {
+    console.log(`[LOGIN] 生日驗證失敗: DB=${userBday}, Input=${inputBday}`)
+    return { success: false, message: '生日驗證失敗' }
+  }
+  
+  console.log(`[LOGIN] 登入成功: ${user.nickname}`)
+  
+  return {
+    success: true,
+    user: {
+      phone: user.phone,
+      nickname: user.nickname,
+      email: user.email || '',
+      customerName: user.real_name || user.nickname,
+      address: user.address || '',
+      birthday: user.birthday,
+      shipStore: user.ship_store || '',
+      storeNumber: user.store_number || ''
+    }
+  }
+}
+
+/**
+ * 註冊新用戶
+ */
+async function handleRegisterUser(body, supabase) {
+  const { phone, nickname, birthday, email, address, realName } = body
+  
+  if (!phone || !nickname || !birthday) {
+    return { success: false, message: '請填寫必填欄位' }
+  }
+  
+  // 檢查是否已註冊
+  const existing = await supabase.query('users', { eq: { phone } })
+  if (existing && existing.length > 0) {
+    return { success: false, message: '此電話號碼已註冊' }
+  }
+  
+  // 新增用戶
+  const newUser = {
+    phone,
+    nickname,
+    birthday,
+    email: email || null,
+    address: address || null,
+    real_name: realName || null,
+    created_at: new Date().toISOString()
+  }
+  
+  await supabase.insert('users', newUser)
+  
+  console.log(`[REGISTER] 新用戶註冊成功: ${nickname}`)
+  
+  return { success: true, message: '註冊成功！' }
+}
+
+// ============================================
+// 📌 商品功能
+// ============================================
+
+/**
+ * 取得商品目錄（含累積張數計算）
+ * 
+ * 重要邏輯:
+ * 1. 從 product_catalog 取得所有商品
+ * 2. 從 orders 計算每個商品的累積張數
+ * 3. Google Sheet 中的累積張數是用公式計算的，這裡要用程式實作
+ */
+async function handleGetProducts(body, supabase) {
+  console.log('[GET_PRODUCTS] 開始查詢商品目錄')
+  
+  try {
+    // 1. 取得所有商品
+    const products = await supabase.query('product_catalog', {
+      order: 'created_at.desc'
+    })
+    
+    if (!products || products.length === 0) {
+      return { success: true, items: [], message: '目前沒有商品' }
+    }
+    
+    console.log(`[GET_PRODUCTS] 查詢到 ${products.length} 個商品`)
+    
+    // 2. 查詢所有訂單來計算累積張數
+    // 🔑 關鍵: 使用 queryAll 確保取得所有訂單資料
+    const allOrders = await supabase.queryAll('orders', {
+      select: 'item,card_no,quantity'
+    })
+    
+    console.log(`[GET_PRODUCTS] 查詢到 ${allOrders.length} 筆訂單`)
+    
+    // 3. 計算每個商品的累積張數
+    const accumulatedMap = new Map()
+    
+    if (Array.isArray(allOrders)) {
+      allOrders.forEach(order => {
+        const itemName = String(order.item || '').trim()
+        const cardNo = String(order.card_no || '').trim()
+        const key = `${itemName}||${cardNo}`
+        const qty = parseInt(order.quantity) || 0
+        
+        if (qty > 0) {
+          accumulatedMap.set(key, (accumulatedMap.get(key) || 0) + qty)
+        }
+      })
+    }
+    
+    console.log(`[GET_PRODUCTS] 累積張數計算完成，共 ${accumulatedMap.size} 個商品有訂單`)
+    
+    // 4. 組裝商品資料
+    const items = products.map(p => {
+      const itemName = String(p.item_name || '').trim()
+      const cardNo = String(p.card_no || '').trim()
+      const key = `${itemName}||${cardNo}`
+      const accumulated = accumulatedMap.get(key) || 0
+      
+      // 判斷商品狀態
+      const isOpen = p.is_available !== 'N'  // 只有明確設為 'N' 才關閉
+      const isBox = p.is_box_preorder === 'true'
+      
+      return {
+        item: p.item_name,
+        cardNo: p.card_no,
+        price: parseFloat(p.price) || 0,
+        discountPrice: parseFloat(p.threshold_price) || parseFloat(p.price) || 0,
+        fullPrice: parseFloat(p.threshold_price) || parseFloat(p.price) || 0,
+        thresholdPrice: parseFloat(p.threshold_price) || parseFloat(p.price) || 0,
+        threshold: parseInt(p.discount_threshold) || 0,
+        minGroup: parseInt(p.min_group) || 0,
+        accumulatedCount: accumulated,
+        status: isOpen ? 'open' : 'closed',
+        isOpen: isOpen,
+        isBox: isBox ? 'Y' : 'N',
+        isDirect: (p.is_direct_order === 'true' || p.is_direct_order === true) ? 'Y' : 'N',
+        stock: parseInt(p.remaining_stock) || 0,
+        stockStatus: p.stock_status || '',
+        arrivalStatus: p.stock_status || '',
+        category: p.category || '其他',
+        closeTime: p.close_time || '',
+        images: [
+          p.image_url_1 || '',
+          p.image_url_2 || '',
+          p.image_url_3 || ''
+        ].filter(img => img),
+        img1: p.image_url_1 || '',
+        img2: p.image_url_2 || '',
+        canDrawSp: p.can_draw_sp === 'true',
+        canDrawSignature: p.can_draw_signature === 'true',
+        canDrawRelic: p.can_draw_relic === 'true',
+        canDrawAutoRelic: p.can_draw_auto_relic === 'true',
+        description: p.description || ''
+      }
+    })
+    
+    console.log(`[GET_PRODUCTS] 返回 ${items.length} 個商品`)
+    
+    return {
+      success: true,
+      items: items
+    }
+    
+  } catch (error) {
+    console.error('[GET_PRODUCTS] 錯誤:', error)
+    return {
+      success: false,
+      message: '查詢商品失敗: ' + error.message
+    }
+  }
+}
+
+// ============================================
+// 📌 訂單功能
+// ============================================
+
+/**
+ * 取得用戶訂單資訊
+ * 
+ * 重要邏輯:
+ * 1. 從 users 取得用戶資料
+ * 2. 從 orders 取得該用戶所有訂單
+ * 3. 從 break_credits 取得團拆金記錄
+ * 4. 計算每筆訂單的累積張數（該用戶該商品的總數）
+ */
+async function handleGetOrderInfo(body, supabase) {
+  const { phone, birthday } = body
+  console.log(`[GET_ORDER_INFO] 查詢訂單: phone=${phone}`)
+  
+  if (!phone) {
+    return { success: false, message: '請提供手機號碼' }
+  }
+  
+  try {
+    // 1. 驗證用戶
+    const users = await supabase.query('users', { eq: { phone } })
+    
+    if (!users || users.length === 0) {
+      return { success: false, message: '找不到用戶資料' }
+    }
+    
+    const user = users[0]
+    
+    // 驗證生日（如果有提供）
+    if (birthday) {
+      const userBday = String(user.birthday || '').replace(/\D/g, '').slice(-4)
+      const inputBday = String(birthday).replace(/\D/g, '')
+      
+      if (userBday !== inputBday) {
+        return { success: false, message: '生日驗證失敗' }
+      }
+    }
+    
+    // 2. 查詢該用戶的所有訂單
+    const orders = await supabase.queryAll('orders', {
+      eq: { phone },
+      order: 'created_at.desc'
+    })
+    
+    console.log(`[GET_ORDER_INFO] 查詢到 ${orders.length} 筆訂單`)
+    
+    // 3. 計算每個商品的累積張數（用於顯示該用戶的累積進度）
+    const userAccumulated = new Map()
+    
+    if (Array.isArray(orders)) {
+      orders.forEach(order => {
+        const key = `${order.item}||${order.card_no}`
+        const qty = parseInt(order.quantity) || 0
+        userAccumulated.set(key, (userAccumulated.get(key) || 0) + qty)
+      })
+    }
+    
+    // 4. 查詢團拆金記錄
+    const breaks = await supabase.query('break_credits', {
+      eq: { nickname: user.nickname },
+      order: 'timestamp.desc'
+    })
+    
+    console.log(`[GET_ORDER_INFO] 查詢到 ${breaks.length} 筆團拆記錄`)
+    
+    // 5. 格式化訂單資料
+    const formattedOrders = orders.map(o => {
+      const key = `${o.item}||${o.card_no}`
+      const accumulated = userAccumulated.get(key) || 0
+      
+      return {
+        item: o.item,
+        cardNo: o.card_no,
+        quantity: parseInt(o.quantity) || 0,
+        price: parseFloat(o.price) || 0,
+        total: parseFloat(o.total_fee) || 0,
+        totalFee: parseFloat(o.total_fee) || 0,
+        deposit: parseFloat(o.deposit) || 0,
+        balance: parseFloat(o.balance) || 0,
+        balanceAmount: parseFloat(o.balance) || 0,
+        status: o.status || '準備中',
+        date: o.created_at || o.timestamp || '',
+        timestamp: o.timestamp || o.created_at || '',
+        imageUrl: o.image_url || '',
+        image: o.image_url || '',
+        arrivalStatus: o.arrival_status || '準備中',
+        paymentNotified: o.payment_notified === true,
+        accumulatedCount: accumulated
+      }
+    })
+    
+    // 6. 格式化團拆金記錄
+    const formattedBreaks = breaks.map(b => ({
+      breakId: b.break_id,
+      name: b.break_name || '',
+      totalFee: parseFloat(b.total_fee) || 0,
+      balance: parseFloat(b.balance) || 0,
+      status: b.status || '',
+      timestamp: b.timestamp || b.created_at || ''
+    }))
+    
+    console.log(`[GET_ORDER_INFO] 返回 ${formattedOrders.length} 筆訂單, ${formattedBreaks.length} 筆團拆`)
+    
+    return {
+      success: true,
+      nickname: user.nickname,
+      phone: user.phone,
+      email: user.email || '',
+      address: user.address || '',
+      customerName: user.real_name || user.nickname,
+      orders: formattedOrders,
+      groupBreaks: formattedBreaks
+    }
+    
+  } catch (error) {
+    console.error('[GET_ORDER_INFO] 錯誤:', error)
+    return {
+      success: false,
+      message: '查詢訂單失敗: ' + error.message
+    }
+  }
+}
+
+/**
+ * 新增訂單
+ * 
+ * 重要邏輯（從 backend.js addOrderEntriesToMain 移植）:
+ * 1. 驗證用戶和商品
+ * 2. 計算當前累積張數
+ * 3. 檢查是否達到門檻價
+ * 4. 如果達到門檻，回溯更新該用戶該商品的所有舊訂單價格
+ * 5. 新增訂單到資料庫
+ */
+async function handleAddOrder(body, supabase) {
+  const { nickname, phone, orderEntries } = body
+  console.log(`[ADD_ORDER] 收到下單請求: ${nickname}, ${orderEntries.length} 個商品`)
+  
+  if (!orderEntries || orderEntries.length === 0) {
+    return { success: false, message: '訂單資料為空' }
+  }
+  
+  try {
+    // 1. 驗證用戶
+    const users = await supabase.query('users', { eq: { phone } })
+    if (!users || users.length === 0) {
+      return { success: false, message: '找不到用戶資料' }
+    }
+    
+    const user = users[0]
+    const userId = user.id
+    
+    // 2. 取得商品資訊
+    const products = await supabase.query('product_catalog', {})
+    const productMap = new Map()
+    
+    if (Array.isArray(products)) {
+      products.forEach(p => {
+        const key = `${String(p.item_name || '').trim()}||${String(p.card_no || '').trim()}`
+        productMap.set(key, {
+          imageUrl: p.image_url_1 || '',
+          arrivalStatus: p.stock_status || '',
+          threshold: parseInt(p.discount_threshold) || 0,
+          fullPrice: parseFloat(p.threshold_price) || parseFloat(p.price) || 0,
+          normalPrice: parseFloat(p.price) || 0,
+          isOpen: p.is_available !== 'N',
+          stock: parseInt(p.remaining_stock) || 0
+        })
+      })
+    }
+    
+    // 3. 計算當前全站累積張數
+    const allOrders = await supabase.queryAll('orders', {
+      select: 'item,card_no,quantity'
+    })
+    
+    const globalAccumulated = new Map()
+    if (Array.isArray(allOrders)) {
+      allOrders.forEach(order => {
+        const key = `${order.item}||${order.card_no}`
+        const qty = parseInt(order.quantity) || 0
+        if (qty > 0) {
+          globalAccumulated.set(key, (globalAccumulated.get(key) || 0) + qty)
+        }
+      })
+    }
+    
+    console.log(`[ADD_ORDER] 當前全站訂單數: ${allOrders.length}`)
+    
+    // 4. 處理每個下單商品
+    const newOrders = []
+    const priceUpdateTasks = []  // 需要回溯更新價格的任務
+    
+    for (const entry of orderEntries) {
+      const { item, cardNo, quantity, price } = entry
+      const key = `${item}||${cardNo}`
+      const productInfo = productMap.get(key)
+      
+      if (!productInfo) {
+        console.log(`[ADD_ORDER] 警告: 找不到商品資訊 ${key}`)
+        continue
+      }
+      
+      // 檢查商品是否開放下單
+      if (!productInfo.isOpen) {
+        console.log(`[ADD_ORDER] 商品已關閉: ${key}`)
+        continue
+      }
+      
+      const qty = parseInt(quantity) || 0
+      if (qty <= 0) continue
+      
+      // 計算累積張數（加上本次下單）
+      const currentAccumulated = (globalAccumulated.get(key) || 0) + qty
+      const threshold = productInfo.threshold
+      
+      console.log(`[ADD_ORDER] ${key}: 累積=${currentAccumulated}, 門檻=${threshold}`)
+      
+      // 🔑 判斷是否達到門檻價
+      let finalPrice = parseFloat(price) || productInfo.normalPrice
+      let shouldUpdateOldOrders = false
+      
+      if (threshold > 0 && currentAccumulated >= threshold) {
+        // 達到門檻，使用門檻價
+        finalPrice = productInfo.fullPrice
+        
+        // 檢查是否剛好達到門檻（之前累積 < 門檻，現在 >= 門檻）
+        const previousAccumulated = globalAccumulated.get(key) || 0
+        if (previousAccumulated < threshold) {
+          shouldUpdateOldOrders = true
+          console.log(`[ADD_ORDER] 剛達到門檻！需要回溯更新舊訂單`)
+        }
+      }
+      
+      // 計算金額（簡化版：全額為尾款，無訂金）
+      const totalFee = finalPrice * qty
+      const deposit = 0
+      const balance = totalFee
+      
+      // 建立訂單記錄
+      const orderRecord = {
+        user_id: userId,
+        phone: phone,
+        nickname: nickname,
+        item: item,
+        card_no: cardNo,
+        quantity: qty,
+        price: finalPrice,
+        total_fee: totalFee,
+        deposit: deposit,
+        balance: balance,
+        status: '準備中',
+        arrival_status: productInfo.arrivalStatus,
+        image_url: productInfo.imageUrl,
+        payment_notified: false,
+        created_at: new Date().toISOString(),
+        timestamp: new Date().toISOString()
+      }
+      
+      newOrders.push(orderRecord)
+      
+      // 🔑 如果剛達到門檻，需要回溯更新該用戶該商品的所有舊訂單
+      if (shouldUpdateOldOrders) {
+        priceUpdateTasks.push({
+          phone: phone,
+          item: item,
+          cardNo: cardNo,
+          newPrice: productInfo.fullPrice
+        })
+      }
+    }
+    
+    if (newOrders.length === 0) {
+      return { success: false, message: '沒有有效的訂單項目' }
+    }
+    
+    // 5. 插入新訂單
+    await supabase.insert('orders', newOrders)
+    console.log(`[ADD_ORDER] 成功新增 ${newOrders.length} 筆訂單`)
+    
+    // 6. 執行價格回溯更新
+    for (const task of priceUpdateTasks) {
+      try {
+        // 查詢該用戶該商品的所有舊訂單
+        const oldOrders = await supabase.query('orders', {
+          eq: {
+            phone: task.phone,
+            item: task.item,
+            card_no: task.cardNo
+          }
+        })
+        
+        console.log(`[ADD_ORDER] 找到 ${oldOrders.length} 筆舊訂單需要更新價格`)
+        
+        // 更新每筆舊訂單的價格
+        for (const oldOrder of oldOrders) {
+          const oldPrice = parseFloat(oldOrder.price) || 0
+          if (oldPrice !== task.newPrice) {
+            const newTotalFee = task.newPrice * oldOrder.quantity
+            const newBalance = newTotalFee - (parseFloat(oldOrder.deposit) || 0)
+            
+            await supabase.update('orders',
+              { id: oldOrder.id },
+              {
+                price: task.newPrice,
+                total_fee: newTotalFee,
+                balance: newBalance
+              }
+            )
+            
+            console.log(`[ADD_ORDER] 更新訂單 #${oldOrder.id}: ${oldPrice} → ${task.newPrice}`)
+          }
+        }
+      } catch (error) {
+        console.error(`[ADD_ORDER] 更新價格失敗:`, error)
+      }
+    }
+    
+    return {
+      success: true,
+      message: `成功下單 ${newOrders.length} 個商品`,
+      orderCount: newOrders.length
+    }
+    
+  } catch (error) {
+    console.error('[ADD_ORDER] 錯誤:', error)
+    return {
+      success: false,
+      message: '下單失敗: ' + error.message
+    }
+  }
+}
+
+// ============================================
+// 📌 付款通知功能
+// ============================================
+
+/**
+ * 取得待付款訂單 Key
+ * 從 payment_records 資料表查詢該用戶待處理的付款記錄
+ */
+async function handleGetPendingPaymentKeys(body, supabase) {
+  const { nickname, phone } = body
+  console.log(`[GET_PENDING_KEYS] 查詢待付款: ${nickname}`)
+  
+  try {
+    const records = await supabase.query('payment_records', {
+      eq: { nickname, status: 'pending' }
+    })
+    
+    const keys = records.map(r => r.payment_key).filter(k => k)
+    
+    console.log(`[GET_PENDING_KEYS] 找到 ${keys.length} 個待付款 key`)
+    
+    return {
+      success: true,
+      keys: keys
+    }
+  } catch (error) {
+    console.error('[GET_PENDING_KEYS] 錯誤:', error)
+    return { success: false, message: error.message, keys: [] }
+  }
+}
+
+/**
+ * 批次付款通知
+ * 將多筆訂單的付款資訊寫入 payment_records
+ */
+async function handleNotifyPaymentBulk(body, supabase) {
+  const { nickname, phone, orders, amount, remark } = body
+  console.log(`[NOTIFY_PAYMENT_BULK] ${nickname} 通知付款 ${orders.length} 筆`)
+  
+  try {
+    const now = new Date().toISOString()
+    const records = []
+    const disabledKeys = []
+    
+    for (const order of orders) {
+      const isBox = String(order.isBox || '').toUpperCase()
+      let orderType = 'single'  // 單卡
+      if (isBox === 'Y') orderType = 'box'  // 卡盒
+      if (isBox === 'GB') orderType = 'break'  // 團拆
+      
+      // 生成唯一 key
+      const key = `${nickname}||${order.item}||${order.cardNo}||${order.quantity}||${order.total}||${isBox}`
+      disabledKeys.push(key)
+      
+      records.push({
+        timestamp: now,
+        nickname: nickname,
+        phone: phone,
+        payment_key: key,
+        item: order.item,
+        card_no: order.cardNo,
+        quantity: order.quantity,
+        total: order.total,
+        amount: amount || 0,
+        remark: remark || '',
+        status: 'pending',
+        order_type: orderType,
+        created_at: now
+      })
+    }
+    
+    if (records.length > 0) {
+      await supabase.insert('payment_records', records)
+    }
+    
+    console.log(`[NOTIFY_PAYMENT_BULK] 成功建立 ${records.length} 筆付款通知`)
+    
+    // TODO: 發送 email 通知管理員
+    
+    return {
+      success: true,
+      disabledKeys: disabledKeys
+    }
+  } catch (error) {
+    console.error('[NOTIFY_PAYMENT_BULK] 錯誤:', error)
+    return { success: false, message: error.message }
+  }
+}
+
+/**
+ * 提交付款通知
+ * 單筆付款通知（可能包含多個項目）
+ */
+async function handlePaymentNotification(body, supabase) {
+  const { nickname, phone, item, cardNo, quantity, total, amount, remark, type, breakId, key, status } = body
+  console.log(`[PAYMENT_NOTIFICATION] ${nickname} 提交付款通知`)
+  
+  try {
+    const now = new Date().toISOString()
+    const paymentType = type || 'order'
+    
+    // 拆分多筆項目（用 || 分隔）
+    const items = String(item || '').split('||').map(s => s.trim()).filter(s => s)
+    const records = []
+    
+    if (paymentType === 'break') {
+      // 團拆付款通知
+      const breakIds = String(breakId || '').split('||').map(s => s.trim()).filter(s => s)
+      
+      for (let i = 0; i < items.length; i++) {
+        records.push({
+          timestamp: now,
+          nickname: nickname,
+          phone: phone,
+          payment_key: key || '',
+          item: items[i],
+          card_no: breakIds[i] || '',  // 團拆編號存在 card_no
+          quantity: quantity || 0,
+          total: total || 0,
+          amount: amount || 0,
+          remark: remark || '',
+          status: 'break',
+          order_type: 'break',
+          created_at: now
+        })
+      }
+    } else {
+      // 訂單付款通知
+      const cardNos = String(cardNo || '').split('||').map(s => s.trim()).filter(s => s)
+      
+      for (let i = 0; i < items.length; i++) {
+        const fullItem = items[i]
+        const itemParts = fullItem.split(' #')
+        const itemName = itemParts[0].trim()
+        const cardNoFromItem = itemParts[1] || cardNos[i] || ''
+        
+        records.push({
+          timestamp: now,
+          nickname: nickname,
+          phone: phone,
+          payment_key: key || '',
+          item: itemName,
+          card_no: cardNoFromItem,
+          quantity: quantity || 0,
+          total: total || 0,
+          amount: amount || 0,
+          remark: remark || '',
+          status: status || 'pending',
+          order_type: 'order',
+          created_at: now
+        })
+      }
+    }
+    
+    if (records.length > 0) {
+      await supabase.insert('payment_records', records)
+    }
+    
+    console.log(`[PAYMENT_NOTIFICATION] 成功建立 ${records.length} 筆付款記錄`)
+    
+    return { success: true }
+    
+  } catch (error) {
+    console.error('[PAYMENT_NOTIFICATION] 錯誤:', error)
+    return { success: false, message: error.message }
+  }
+}
+
+/**
+ * 個人資料更新通知
+ */
+async function handleNotifyProfileUpdate(body, supabase) {
+  const { nickname, phone, email, shipStore, storeNumber, address } = body
+  console.log(`[PROFILE_UPDATE] ${nickname} 更新個人資料`)
+  
+  try {
+    // 更新用戶資料
+    const updates = {}
+    if (email !== undefined) updates.email = email
+    if (shipStore !== undefined) updates.ship_store = shipStore
+    if (storeNumber !== undefined) updates.store_number = storeNumber
+    if (address !== undefined) updates.address = address
+    
+    await supabase.update('users', { phone }, updates)
+    
+    console.log(`[PROFILE_UPDATE] 成功更新用戶資料`)
+    
+    // TODO: 發送 email 通知管理員
+    
+    return { success: true }
+    
+  } catch (error) {
+    console.error('[PROFILE_UPDATE] 錯誤:', error)
+    return { success: false, message: error.message }
+  }
+}
+
+/**
+ * 查詢訂單狀態
+ * 根據關鍵字搜尋訂單
+ */
+async function handleLookupOrderStatus(body, supabase) {
+  const { query } = body
+  console.log(`[LOOKUP_ORDER] 搜尋: ${query}`)
+  
+  if (!query || query.length < 2) {
+    return { success: false, message: '請輸入至少2個字元' }
+  }
+  
+  try {
+    // 查詢所有訂單（簡化版：在程式中過濾）
+    const allOrders = await supabase.queryAll('orders', {
+      order: 'created_at.desc'
+    })
+    
+    // 過濾包含關鍵字的訂單
+    const results = allOrders.filter(order => {
+      const searchText = `${order.nickname} ${order.phone} ${order.item} ${order.card_no}`.toLowerCase()
+      return searchText.includes(query.toLowerCase())
+    }).slice(0, 50)  // 限制最多50筆
+    
+    const formattedResults = results.map(o => ({
+      nickname: o.nickname,
+      phone: o.phone,
+      item: o.item,
+      cardNo: o.card_no,
+      quantity: o.quantity,
+      total: o.total_fee,
+      balance: o.balance,
+      status: o.status,
+      arrivalStatus: o.arrival_status,
+      timestamp: o.created_at
+    }))
+    
+    console.log(`[LOOKUP_ORDER] 找到 ${formattedResults.length} 筆結果`)
+    
+    return {
+      success: true,
+      orders: formattedResults
+    }
+    
+  } catch (error) {
+    console.error('[LOOKUP_ORDER] 錯誤:', error)
+    return { success: false, message: error.message }
+  }
+}
+
+// ============================================
+// 📌 團拆金功能
+// ============================================
+
+/**
+ * 取得團拆金餘額
+ */
+async function handleGetBreakCredit(body, supabase) {
+  const { nickname } = body
+  console.log(`[GET_BREAK_CREDIT] 查詢團拆金: ${nickname}`)
+  
+  try {
+    // 查詢該用戶的所有團拆金記錄
+    const records = await supabase.query('break_credits', {
+      eq: { nickname }
+    })
+    
+    if (!records || records.length === 0) {
+      return {
+        success: true,
+        credit: 0,
+        history: []
+      }
+    }
+    
+    let totalCredit = 0
+    const history = []
+    
+    for (const record of records) {
+      const creditAmount = parseFloat(record.credit_amount) || 0
+      const usedAmount = parseFloat(record.used_amount) || 0
+      const remainingAmount = creditAmount - usedAmount
+      
+      if (remainingAmount > 0) {
+        totalCredit += remainingAmount
+      }
+      
+      history.push({
+        amount: creditAmount,
+        usedAmount: usedAmount,
+        remaining: remainingAmount,
+        source: record.source || '',
+        used: record.is_used === true,
+        usedBreak: record.used_break || ''
+      })
+    }
+    
+    console.log(`[GET_BREAK_CREDIT] 團拆金餘額: ${totalCredit}`)
+    
+    return {
+      success: true,
+      credit: totalCredit,
+      history: history
+    }
+    
+  } catch (error) {
+    console.error('[GET_BREAK_CREDIT] 錯誤:', error)
+    return { success: false, message: error.message }
+  }
+}
+
+/**
+ * 使用團拆金
+ */
+async function handleUseBreakCredit(body, supabase) {
+  const { nickname, amount, breakIds } = body
+  console.log(`[USE_BREAK_CREDIT] ${nickname} 使用 ${amount} 元團拆金`)
+  
+  try {
+    // 查詢用戶的團拆金記錄
+    const records = await supabase.query('break_credits', {
+      eq: { nickname },
+      order: 'created_at.asc'  // 按時間順序使用
+    })
+    
+    if (!records || records.length === 0) {
+      return { success: false, message: '沒有可用的團拆金' }
+    }
+    
+    let remainingToUse = amount
+    const updates = []
+    
+    // 依序扣除團拆金
+    for (const record of records) {
+      if (remainingToUse <= 0) break
+      
+      const creditAmount = parseFloat(record.credit_amount) || 0
+      const alreadyUsed = parseFloat(record.used_amount) || 0
+      const available = creditAmount - alreadyUsed
+      
+      if (available > 0) {
+        const toUse = Math.min(available, remainingToUse)
+        const newUsedAmount = alreadyUsed + toUse
+        
+        updates.push({
+          id: record.id,
+          newUsedAmount: newUsedAmount,
+          isFullyUsed: newUsedAmount >= creditAmount,
+          breakIds: breakIds
+        })
+        
+        remainingToUse -= toUse
+      }
+    }
+    
+    if (remainingToUse > 0) {
+      return { success: false, message: '團拆金不足' }
+    }
+    
+    // 執行更新
+    for (const update of updates) {
+      await supabase.update('break_credits',
+        { id: update.id },
+        {
+          used_amount: update.newUsedAmount,
+          is_used: update.isFullyUsed,
+          used_break: update.breakIds
+        }
+      )
+    }
+    
+    // 計算剩餘團拆金
+    const afterRecords = await supabase.query('break_credits', {
+      eq: { nickname }
+    })
+    
+    let remainingCredit = 0
+    for (const record of afterRecords) {
+      const creditAmount = parseFloat(record.credit_amount) || 0
+      const usedAmount = parseFloat(record.used_amount) || 0
+      remainingCredit += (creditAmount - usedAmount)
+    }
+    
+    console.log(`[USE_BREAK_CREDIT] 使用成功，剩餘: ${remainingCredit}`)
+    
+    return {
+      success: true,
+      remainingCredit: remainingCredit
+    }
+    
+  } catch (error) {
+    console.error('[USE_BREAK_CREDIT] 錯誤:', error)
+    return { success: false, message: error.message }
+  }
+}
+}
+
+// ============================================
+// 📌 PSA 鑑定功能（暫不實作）
+// ============================================
+
+async function handleSubmitPsaOrder(body, supabase) {
+  // PSA 功能暫不移植
+  return { success: false, message: 'PSA 功能暫不提供' }
+}
+
+async function handleLookupPsaOrders(body, supabase) {
+  // PSA 功能暫不移植
+  return { success: false, message: 'PSA 功能暫不提供' }
+}
+
+// ============================================
+// 📌 每日運勢功能
+// ============================================
+
+/**
+ * 檢查今日是否已抽過運勢
+ */
+async function handleCheckDailyFortune(body, supabase) {
+  const { phone } = body
+  console.log(`[CHECK_FORTUNE] 檢查運勢: ${phone}`)
+  
+  try {
+    const today = new Date().toISOString().split('T')[0]  // YYYY-MM-DD
+    
+    // 查詢今天的運勢記錄
+    const records = await supabase.query('daily_fortune', {
+      eq: { phone }
+    })
+    
+    // 檢查是否有今天的記錄
+    const todayRecord = records.find(r => {
+      const recordDate = new Date(r.fortune_date).toISOString().split('T')[0]
+      return recordDate === today
+    })
+    
+    if (todayRecord) {
+      console.log(`[CHECK_FORTUNE] 今日已抽過`)
+      return {
+        success: true,
+        drawnToday: true,
+        result: todayRecord.fortune_result
+      }
+    }
+    
+    console.log(`[CHECK_FORTUNE] 今日尚未抽籤`)
+    return {
+      success: true,
+      drawnToday: false
+    }
+    
+  } catch (error) {
+    console.error('[CHECK_FORTUNE] 錯誤:', error)
+    return { success: false, message: error.message }
+  }
+}
+
+/**
+ * 儲存今日運勢
+ */
+async function handleSaveDailyFortune(body, supabase) {
+  const { phone, nickname, result } = body
+  console.log(`[SAVE_FORTUNE] 儲存運勢: ${nickname}`)
+  
+  try {
+    const today = new Date().toISOString().split('T')[0]
+    
+    // 新增運勢記錄
+    await supabase.insert('daily_fortune', {
+      phone: phone,
+      nickname: nickname,
+      fortune_date: today,
+      fortune_result: result,
+      created_at: new Date().toISOString()
+    })
+    
+    console.log(`[SAVE_FORTUNE] 儲存成功`)
+    
+    return { success: true }
+    
+  } catch (error) {
+    console.error('[SAVE_FORTUNE] 錯誤:', error)
+    return { success: false, message: error.message }
+  }
+}
+
+// ============================================
+// 📌 出貨功能
+// ============================================
+
+/**
+ * 建立出貨記錄
+ */
+async function handleCreateShipmentRecord(body, supabase) {
+  const { phone, nickname, items, trackingNumber, shippingFee } = body
+  console.log(`[CREATE_SHIPMENT] 建立出貨記錄: ${nickname}`)
+  
+  try {
+    const now = new Date().toISOString()
+    
+    // 建立出貨記錄
+    const shipmentRecord = {
+      phone: phone,
+      nickname: nickname,
+      tracking_number: trackingNumber || '',
+      shipping_fee: parseFloat(shippingFee) || 0,
+      shipped_at: now,
+      created_at: now
+    }
+    
+    const inserted = await supabase.insert('shipment_records', shipmentRecord)
+    const shipmentId = inserted[0].id
+    
+    // 更新訂單狀態為「已寄出」
+    if (items && items.length > 0) {
+      for (const item of items) {
+        try {
+          // 查詢該筆訂單
+          const orders = await supabase.query('orders', {
+            eq: {
+              phone: phone,
+              item: item.item,
+              card_no: item.cardNo
+            }
+          })
+          
+          // 更新狀態
+          for (const order of orders) {
+            await supabase.update('orders',
+              { id: order.id },
+              {
+                arrival_status: '已寄出',
+                shipment_id: shipmentId
+              }
+            )
+          }
+        } catch (error) {
+          console.error(`[CREATE_SHIPMENT] 更新訂單失敗:`, error)
+        }
+      }
+    }
+    
+    console.log(`[CREATE_SHIPMENT] 出貨記錄建立成功 #${shipmentId}`)
+    
+    // TODO: 發送出貨通知 email
+    
+    return {
+      success: true,
+      shipmentId: shipmentId
+    }
+    
+  } catch (error) {
+    console.error('[CREATE_SHIPMENT] 錯誤:', error)
+    return { success: false, message: error.message }
+  }
+}
+
+/**
+ * 取得出貨記錄
+ */
+async function handleGetShipmentRecords(body, supabase) {
+  const { phone } = body
+  console.log(`[GET_SHIPMENT] 查詢出貨記錄: ${phone}`)
+  
+  try {
+    const records = await supabase.query('shipment_records', {
+      eq: { phone },
+      order: 'shipped_at.desc'
+    })
+    
+    const formattedRecords = records.map(r => ({
+      trackingNumber: r.tracking_number,
+      shippingFee: r.shipping_fee,
+      shippedAt: r.shipped_at,
+      items: []  // TODO: 關聯訂單項目
+    }))
+    
+    console.log(`[GET_SHIPMENT] 找到 ${formattedRecords.length} 筆出貨記錄`)
+    
+    return {
+      success: true,
+      records: formattedRecords
+    }
+    
+  } catch (error) {
+    console.error('[GET_SHIPMENT] 錯誤:', error)
+    return { success: false, message: error.message }
+  }
+}
+}
+
+// ============================================
+// 📌 綠界金流功能（暫不實作）
+// ============================================
+
+async function handleCreateEcpayPayment(body, supabase) {
+  // 綠界金流整合較複雜，暫不實作
+  // 需要 HashKey、HashIV 等敏感資訊
+  return { success: false, message: '綠界金流功能暫不提供' }
+}
+
+async function handleCheckPaymentStatus(body, supabase) {
+  // 綠界金流整合較複雜，暫不實作
+  return { success: false, message: '綠界金流功能暫不提供' }
+}
+
+async function handleUpdateOrderStatusToPending(body, supabase) {
+  const { orderDetails, merchantTradeNo } = body
+  console.log(`[UPDATE_ORDER_PENDING] 更新訂單狀態`)
+  
+  try {
+    // 更新訂單狀態為「付款確認中」
+    if (orderDetails && orderDetails.length > 0) {
+      for (const detail of orderDetails) {
+        const orders = await supabase.query('orders', {
+          eq: {
+            phone: detail.phone,
+            item: detail.item,
+            card_no: detail.cardNo
+          }
+        })
+        
+        for (const order of orders) {
+          await supabase.update('orders',
+            { id: order.id },
+            {
+              status: '付款確認中',
+              payment_trade_no: merchantTradeNo
+            }
+          )
+        }
+      }
+    }
+    
+    return { success: true }
+    
+  } catch (error) {
+    console.error('[UPDATE_ORDER_PENDING] 錯誤:', error)
+    return { success: false, message: error.message }
+  }
+}
+
+async function handleUpdateBreakStatusToPending(body, supabase) {
+  const { breakDetails, merchantTradeNo } = body
+  console.log(`[UPDATE_BREAK_PENDING] 更新團拆狀態`)
+  
+  try {
+    // 更新團拆狀態為「付款確認中」
+    if (breakDetails && breakDetails.length > 0) {
+      for (const detail of breakDetails) {
+        await supabase.update('break_credits',
+          { break_id: detail.breakId },
+          {
+            status: '付款確認中',
+            payment_trade_no: merchantTradeNo
+          }
+        )
+      }
+    }
+    
+    return { success: true }
+    
+  } catch (error) {
+    console.error('[UPDATE_BREAK_PENDING] 錯誤:', error)
+    return { success: false, message: error.message }
+  }
+}
+
+// ============================================
+// 📌 資料驗證功能
+// ============================================
+
+async function handleVerifyData(body, supabase) {
+  console.log('[VERIFY_DATA] 開始驗證資料')
+  
+  try {
+    const report = {
+      users: 0,
+      products: 0,
+      orders: 0,
+      breakCredits: 0,
+      errors: []
+    }
+    
+    // 統計用戶數量
+    const users = await supabase.query('users', {})
+    report.users = users.length
+    
+    // 統計商品數量
+    const products = await supabase.query('product_catalog', {})
+    report.products = products.length
+    
+    // 統計訂單數量
+    const orders = await supabase.queryAll('orders', {})
+    report.orders = orders.length
+    
+    // 統計團拆金記錄
+    const breaks = await supabase.query('break_credits', {})
+    report.breakCredits = breaks.length
+    
+    // 驗證資料完整性
+    let invalidOrders = 0
+    for (const order of orders) {
+      if (!order.phone || !order.item) {
+        invalidOrders++
+      }
+    }
+    
+    if (invalidOrders > 0) {
+      report.errors.push(`發現 ${invalidOrders} 筆訂單缺少必要欄位`)
+    }
+    
+    console.log('[VERIFY_DATA] 驗證完成:', report)
+    
+    return {
+      success: true,
+      report: report
+    }
+    
+  } catch (error) {
+    console.error('[VERIFY_DATA] 錯誤:', error)
+    return { success: false, message: error.message }
+  }
+}
+}
+
+// ============================================
+// 📌 Worker 入口點
+// ============================================
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url)
+    
+    // CORS 預檢
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type'
+        }
+      })
+    }
+    
+    // API 請求
+    if (request.method === 'POST' && url.pathname === '/api') {
+      return handleAPI(request, env)
+    }
+    
+    // 所有其他請求返回簡單的測試頁面
+    // 🌟 GET 根路徑 - 返回完整的網站前端
+    return new Response(HTML_CONTENT, {
+      headers: { 
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-cache'
+      }
+    })
+  }
+}

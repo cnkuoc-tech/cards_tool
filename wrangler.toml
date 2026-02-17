@@ -1,0 +1,10 @@
+name = "supabase-api"
+main = "worker_supabase_integrated.js"
+compatibility_date = "2024-01-01"
+
+# 環境變數（本地開發用）
+[vars]
+SUPABASE_URL = "https://hmqwcpstzkxfwabasqgx.supabase.co"
+
+# 生產環境密鑰（使用 wrangler secret put 設定）
+# wrangler secret put SUPABASE_KEY

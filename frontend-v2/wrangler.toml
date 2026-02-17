@@ -1,0 +1,17 @@
+name = "ningscard-v2"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# 環境變數
+[vars]
+SUPABASE_URL = "https://hmqwcpstzkxfwabasqgx.supabase.co"
+
+# 密鑰（使用 wrangler secret put 設定）
+# wrangler secret put SUPABASE_ANON_KEY
+
+# 部署設定
+[build]
+command = ""
+
+# 路由設定（使用現有的測試網域）
+route = "supabasefrontdemo.cnkuoc.workers.dev/*"

@@ -1,0 +1,321 @@
+/**
+ * Cloudflare Worker - Ning's Card Store 完整版
+ * 整合版：前端（包含所有功能）+ Supabase API
+ * 
+ * 功能列表：
+ * ✅ 會員登入/登出
+ * ✅ 商品列表（Topps Now）
+ * ✅ 訂單查詢（支援篩選：全部/待付款/已付款/已出貨）
+ * ✅ 團拆查詢
+ * ✅ PSA 鑑定申請
+ * ✅ 付款通知
+ * ✅ 關於我們
+ * 
+ * 部署方式：
+ * 1. 複製這整個檔案的內容
+ * 2. 到 Cloudflare Dashboard → Workers & Pages
+ * 3. 編輯你的 Worker
+ * 4. 貼上並部署
+ * 
+ * 環境變數設定：
+ * - SUPABASE_URL = https://hmqwcpstzkxfwabasqgx.supabase.co
+ * - SUPABASE_ANON_KEY = (你的 Supabase Anon Key)
+ */
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url)
+    
+    // API 路由
+    if (url.pathname.startsWith('/api/')) {
+      return handleAPI(request, env)
+    }
+    
+    // 所有其他路徑都返回 HTML
+    return new Response(HTML_CONTENT, {
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'public, max-age=0, must-revalidate'
+      }
+    })
+  }
+}
+
+/**
+ * Supabase REST API 輔助函數
+ */
+class SupabaseClient {
+  constructor(url, apiKey) {
+    this.url = url
+    this.apiKey = apiKey
+  }
+  
+  async query(table, options = {}) {
+    const { select = '*', eq = {}, or = null, order = null, range = null, count = false } = options
+    
+    let queryUrl = `${this.url}/rest/v1/${table}?select=${select}`
+    
+    // 條件查詢
+    for (const [key, value] of Object.entries(eq)) {
+      queryUrl += `&${key}=eq.${value}`
+    }
+    
+    // OR 查詢
+    if (or) {
+      queryUrl += `&or=(${or})`
+    }
+    
+    // 排序
+    if (order) {
+      queryUrl += `&order=${order.column}.${order.ascending ? 'asc' : 'desc'}`
+    }
+    
+    // 分頁
+    if (range) {
+      queryUrl += `&limit=${range[1] - range[0] + 1}&offset=${range[0]}`
+    }
+    
+    const headers = {
+      'apikey': this.apiKey,
+      'Authorization': `Bearer ${this.apiKey}`,
+      'Content-Type': 'application/json'
+    }
+    
+    if (count) {
+      headers['Prefer'] = 'count=exact'
+    }
+    
+    const response = await fetch(queryUrl, { headers })
+    
+    const data = await response.json()
+    const totalCount = count ? parseInt(response.headers.get('content-range')?.split('/')[1] || '0') : null
+    
+    return {
+      data: response.ok ? data : null,
+      error: response.ok ? null : data,
+      count: totalCount
+    }
+  }
+}
+
+/**
+ * 處理 API 請求
+ */
+async function handleAPI(request, env) {
+  const url = new URL(request.url)
+  const path = url.pathname
+  
+  // 建立 Supabase 客戶端
+  const supabase = new SupabaseClient(
+    env.SUPABASE_URL || 'https://hmqwcpstzkxfwabasqgx.supabase.co',
+    env.SUPABASE_ANON_KEY
+  )
+  
+  // CORS Headers
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  }
+  
+  // 處理 OPTIONS 請求
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders })
+  }
+  
+  try {
+    let response
+    
+    // 登入 API
+    if (path === '/api/login' && request.method === 'POST') {
+      response = await handleLogin(request, supabase)
+    }
+    // 商品列表 API
+    else if (path === '/api/products' && request.method === 'GET') {
+      response = await handleGetProducts(url, supabase)
+    }
+    // 訂單列表 API
+    else if (path === '/api/orders' && request.method === 'GET') {
+      response = await handleGetOrders(url, request, supabase)
+    }
+    // 404
+    else {
+      response = { success: false, message: 'API 不存在' }
+    }
+    
+    return new Response(JSON.stringify(response), {
+      headers: {
+        'Content-Type': 'application/json',
+        ...corsHeaders
+      }
+    })
+    
+  } catch (error) {
+    console.error('API 錯誤:', error)
+    return new Response(JSON.stringify({
+      success: false,
+      message: error.message || '伺服器錯誤'
+    }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        ...corsHeaders
+      }
+    })
+  }
+}
+
+/**
+ * 登入 API
+ */
+async function handleLogin(request, supabase) {
+  const { phone, birthday } = await request.json()
+  
+  if (!phone || !birthday) {
+    return { success: false, message: '請提供手機號碼和生日' }
+  }
+  
+  // 查詢用戶
+  const { data: users, error } = await supabase.query('users', {
+    select: '*',
+    eq: { phone }
+  })
+  
+  if (error) {
+    console.error('查詢用戶失敗:', error)
+    return { success: false, message: '查詢失敗' }
+  }
+  
+  if (!users || users.length === 0) {
+    return { success: false, message: '找不到此手機號碼的會員資料' }
+  }
+  
+  const user = users[0]
+  
+  // 驗證生日（支援多種格式）
+  const userBday = String(user.birthday || '').replace(/\D/g, '').slice(-4)
+  const inputBday = String(birthday).replace(/\D/g, '')
+  
+  if (userBday !== inputBday) {
+    return { success: false, message: '生日驗證失敗' }
+  }
+  
+  // 登入成功，查詢該用戶的訂單和團拆資料
+  const { data: orders } = await supabase.query('orders', {
+    select: '*',
+    eq: { user_id: user.id },
+    order: { column: 'order_date', ascending: false }
+  })
+  
+  const { data: breaks } = await supabase.query('group_breaks', {
+    select: '*',
+    eq: { user_id: user.id },
+    order: { column: 'created_at', ascending: false }
+  })
+  
+  return {
+    success: true,
+    user: {
+      id: user.id,
+      phone: user.phone,
+      nickname: user.nickname,
+      real_name: user.real_name,
+      email: user.email,
+      address: user.address,
+      birthday: user.birthday
+    },
+    orders: orders || [],
+    groupBreaks: breaks || []
+  }
+}
+
+/**
+ * 取得商品列表
+ */
+async function handleGetProducts(url, supabase) {
+  const category = url.searchParams.get('category')
+  const status = url.searchParams.get('status')
+  
+  const queryOptions = {
+    select: '*',
+    order: { column: 'created_at', ascending: false },
+    eq: {}
+  }
+  
+  // 篩選條件
+  if (status === 'available') {
+    queryOptions.eq.is_available = 'Y'
+  }
+  
+  if (status === 'in_stock') {
+    queryOptions.eq.stock_status = 'Y'
+  }
+  
+  if (status === 'pre_order') {
+    queryOptions.eq.stock_status = 'P'
+  }
+  
+  const { data: products, error } = await supabase.query('products', queryOptions)
+  
+  if (error) {
+    console.error('查詢商品失敗:', error)
+    return { success: false, message: '查詢失敗' }
+  }
+  
+  return {
+    success: true,
+    products: products || []
+  }
+}
+
+/**
+ * 取得訂單列表
+ */
+async function handleGetOrders(url, request, supabase) {
+  const userId = url.searchParams.get('user_id')
+  
+  if (!userId) {
+    return { success: false, message: '請先登入' }
+  }
+  
+  const search = url.searchParams.get('search') || ''
+  const filter = url.searchParams.get('filter') || 'all'
+  
+  // 建立查詢選項
+  const queryOptions = {
+    select: '*',
+    eq: { user_id: userId },
+    order: { column: 'order_date', ascending: false }
+  }
+  
+  // 搜尋
+  if (search) {
+    queryOptions.or = `item_name.ilike.*${search}*,card_no.ilike.*${search}*`
+  }
+  
+  const { data: orders, error } = await supabase.query('orders', queryOptions)
+  
+  if (error) {
+    console.error('查詢訂單失敗:', error)
+    return { success: false, message: '查詢失敗' }
+  }
+  
+  // 前端篩選（或可在查詢時篩選）
+  let filteredOrders = orders || []
+  if (filter === 'pending') {
+    filteredOrders = filteredOrders.filter(o => !o.is_cleared)
+  } else if (filter === 'paid') {
+    filteredOrders = filteredOrders.filter(o => o.is_cleared && !o.is_shipped)
+  } else if (filter === 'shipped') {
+    filteredOrders = filteredOrders.filter(o => o.is_shipped)
+  }
+  
+  return {
+    success: true,
+    orders: filteredOrders
+  }
+}
+
+const HTML_CONTENT = `
+<!-- HTML 內容將在下一個檔案繼續 -->
+`

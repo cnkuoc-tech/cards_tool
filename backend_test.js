@@ -151,6 +151,23 @@ function doPost(e) {
         return returnJSON(checkDailyFortune(payload.phone));
       case 'saveDailyFortune':
         return returnJSON(saveDailyFortune(payload.phone, payload.nickname, payload.result));
+      case 'getBreakCredit':
+        return returnJSON(getBreakCredit(payload.nickname));
+      case 'useBreakCredit':
+        return returnJSON(useBreakCredit(payload.nickname, payload.amount, payload.breakIds));
+      
+      // 🔄 Supabase 遷移 - 資料導出端點
+      case 'exportAllUsers':
+        return returnJSON(exportAllUsers());
+      case 'exportAllOrders':
+        return returnJSON(exportAllOrders());
+      case 'exportAllBreaks':
+        return returnJSON(exportAllBreaks());
+      case 'exportAllBreakCredits':
+        return returnJSON(exportAllBreakCredits());
+      case 'exportAllPayments':
+        return returnJSON(exportAllPayments());
+      
       default:
         return returnJSON({ success: false, message: '未知的 action: ' + action });
     }
@@ -351,7 +368,7 @@ function getOrderInfo(phone, birthday) {
         };
 
         if (h.buyer > -1) {
-          const agg = new Map();
+          // 🔑 不再合併訂單,每一列都是獨立的訂單
           for (let i = 1; i < oData.length; i++) {
             const r = oData[i];
             if (String(r[h.buyer]).trim() === info.nickname) {
@@ -372,68 +389,35 @@ function getOrderInfo(phone, birthday) {
                 }
               }
 
-              const key = `${item}||${cardNo}||${isBoxFlag}`;
-
-              if (!agg.has(key)) {
-                agg.set(key, {
-                  item: item,
-                  cardNo: cardNo,
-                  price: h.price > -1 ? Number(r[h.price] || 0) : 0,
-                  originalPrice: h.price > -1 ? Number(r[h.price] || 0) : 0, // 🔑 記錄第一筆的原始單價
-                  quantity: 0,
-                  total: 0,
-                  deposit: 0,
-                  balance: 0,
-                  shipped: '',
-                  arrival: '',
-                  status: '',
-                  imageUrl: h.imgUrl > -1 ? r[h.imgUrl] : '',
-                  isBox: isBoxFlag,
-                  timestamp: h.timestamp > -1 ? r[h.timestamp] : ''
-                });
-              }
-
-              const acc = agg.get(key);
               const qty = Number(r[h.qty] || 0);
-              const rowPrice = Number(r[h.price] || 0);
-              
-              acc.quantity += qty;
-              // 🔑 只在第一次設定價格,之後不再覆蓋(避免被其他筆資料覆蓋)
-              if (!acc.originalPrice) {
-                acc.originalPrice = rowPrice;
-              }
-              acc.price = rowPrice; // 保留最後一筆的價格(用於顯示)
-              acc.total += Number(r[h.total] || 0);
-              acc.deposit += Number(r[h.deposit] || 0);
-              acc.balance += Number(r[h.balance] || 0);
-              
-              // 更新時間戳記 (保留最早的)
-              if (h.timestamp > -1 && r[h.timestamp]) {
-                const currentTs = r[h.timestamp];
-                if (!acc.timestamp || currentTs < acc.timestamp) {
-                  acc.timestamp = currentTs;
-                }
-              }
-              
               const shippedVal = String(r[h.shipped] || '').trim();
-              if (shippedVal.toUpperCase().includes('Y') || shippedVal.includes('是') || shippedVal === 'Y') {
-                acc.shipped = 'Y';
-              }
-              const arrivalVal = String(r[h.arrival] || '').trim();
-              if (arrivalVal === 'V' || arrivalVal.toUpperCase().includes('V')) {
-                acc.arrival = 'V';
-              }
+              const shipped = (shippedVal.toUpperCase().includes('Y') || shippedVal.includes('是') || shippedVal === 'Y') ? 'Y' : '';
               
-              // 更新狀態 (保留最新的非空狀態)
-              if (h.status > -1) {
-                const statusVal = String(r[h.status] || '').trim();
-                if (statusVal) {
-                  acc.status = statusVal;
-                }
-              }
+              const arrivalVal = String(r[h.arrival] || '').trim();
+              const arrival = (arrivalVal === 'V' || arrivalVal.toUpperCase().includes('V')) ? 'V' : '';
+              
+              const statusVal = h.status > -1 ? String(r[h.status] || '').trim() : '';
+              
+              orders.push({
+                item: item,
+                cardNo: cardNo,
+                price: h.price > -1 ? Number(r[h.price] || 0) : 0,
+                quantity: qty,
+                total: Number(r[h.total] || 0),
+                deposit: Number(r[h.deposit] || 0),
+                balance: Number(r[h.balance] || 0),
+                shipped: shipped,
+                arrival: arrival,
+                status: statusVal,
+                imageUrl: h.imgUrl > -1 ? r[h.imgUrl] : '',
+                isBox: isBoxFlag,
+                timestamp: h.timestamp > -1 ? r[h.timestamp] : '',
+                rowIndex: i + 1  // 🔑 保存列號,用於區分相同商品的不同訂單
+              });
             }
           }
-          // 讀取商品目錄以檢查門檻價格
+          
+          // 🔑 讀取商品目錄以取得全站累積數量(僅供前端顯示,不影響價格)
           const productSheet = ss.getSheetByName('下單商品');
           const productLookup = new Map();
           
@@ -444,8 +428,6 @@ function getOrderInfo(phone, birthday) {
               const productIdx = {
                 item: productHeader.indexOf('品項'),
                 cardNo: productHeader.indexOf('卡號'),
-                threshold: productHeader.indexOf('優惠門檻'),
-                fullPrice: productHeader.indexOf('門檻價'),
                 totalOrdered: productHeader.indexOf('已訂單卡張數')
               };
               
@@ -453,22 +435,16 @@ function getOrderInfo(phone, birthday) {
                 const row = productData[i];
                 const item = String(row[productIdx.item] || '').trim();
                 const cardNo = String(row[productIdx.cardNo] || '').trim();
-                const threshold = productIdx.threshold > -1 ? Number(row[productIdx.threshold] || 0) : 0;
-                const fullPrice = productIdx.fullPrice > -1 ? Number(row[productIdx.fullPrice] || 0) : 0;
                 const totalOrdered = productIdx.totalOrdered > -1 ? Number(row[productIdx.totalOrdered] || 0) : 0;
                 
                 const key = item + '||' + cardNo;
-                productLookup.set(key, { 
-                  threshold: threshold, 
-                  fullPrice: fullPrice,
-                  totalOrdered: totalOrdered
-                });
+                productLookup.set(key, { totalOrdered: totalOrdered });
               }
             }
           }
           
-          // 組合訂單狀態並檢查門檻價格
-          orders = Array.from(agg.values()).map(order => {
+          // 🔑 組合訂單狀態(每筆訂單獨立,不再合併)
+          orders = orders.map(order => {
             // arrivalStatus - 用於前端分類篩選(準備中-未到貨/準備中-已到貨/已寄出)
             // 根據實際欄位值推導: 寄出=Y → 已寄出, 到貨狀態=V → 準備中-已到貨, 其他 → 準備中-未到貨
             let arrivalStatus = '準備中-未到貨';
@@ -482,34 +458,10 @@ function getOrderInfo(phone, birthday) {
             // 注意:「到貨狀態」欄位仍維持原本的 V/0 值,不受影響
             const status = order.status || '';
             
-            // 檢查全站累積是否達到門檻
+            // 🔑 讀取全站累積數量(僅供前端顯示參考)
             const productKey = String(order.item).trim() + '||' + String(order.cardNo).trim();
             const productInfo = productLookup.get(productKey);
-            
-            // 🌟 加入全站累積數量
-            let totalOrdered = 0;
-            if (productInfo) {
-              totalOrdered = productInfo.totalOrdered || 0;
-              
-              if (productInfo.threshold > 0 && productInfo.fullPrice > 0) {
-                // 使用全站累積張數判斷是否達到門檻
-                if (totalOrdered >= productInfo.threshold) {
-                  // 🔑 判斷是否為手動調整過的金額
-                  // 使用 originalPrice (第一筆的原始單價) 來判斷,避免被聚合時覆蓋
-                  const originalPrice = order.originalPrice || order.price;
-                  const calculatedTotal = order.quantity * originalPrice;
-                  const isManuallyAdjusted = Math.abs(order.total - calculatedTotal) > 0.01; // 允許小數點誤差
-                  
-                  if (!isManuallyAdjusted) {
-                    // 未手動調整,使用門檻價重新計算
-                    order.price = productInfo.fullPrice;
-                    order.total = order.quantity * productInfo.fullPrice;
-                    order.balance = order.total - order.deposit;
-                  }
-                  // 如果已手動調整,保留 Sheet 中的原始值 (不修改 price, total, balance)
-                }
-              }
-            }
+            const totalOrdered = productInfo ? (productInfo.totalOrdered || 0) : 0;
             
             return { 
               ...order, 
@@ -811,48 +763,76 @@ function addOrderEntriesToMain(payload) {
     const productLookup = new Map();
     const productLookupByItem = new Map(); // key: item (for boxes)
     
-    // 🔒 庫存檢查 - 在處理訂單前先檢查卡盒庫存
+    // 🔒 庫存與開放狀態檢查 - 在處理訂單前先檢查
     if (productSheet) {
       const productData = productSheet.getDataRange().getValues();
       if (productData.length > 1) {
         const productHeader = productData[0];
-        const stockCheckIdx = {
+        const checkIdx = {
           item: productHeader.indexOf('品項'),
+          cardNo: productHeader.indexOf('卡號'),
           stock: productHeader.indexOf('剩餘數量'),
-          isBox: productHeader.indexOf('卡盒預購')
+          isBox: productHeader.indexOf('卡盒預購'),
+          isOpen: productHeader.indexOf('是否開放')
         };
         
-        if (stockCheckIdx.item > -1 && stockCheckIdx.stock > -1 && stockCheckIdx.isBox > -1) {
-          // 建立庫存查詢表 (只記錄卡盒商品)
-          const stockMap = new Map(); // key: item, value: current stock
-          for (let i = 1; i < productData.length; i++) {
-            const row = productData[i];
-            const itemName = String(row[stockCheckIdx.item] || '').trim();
-            const isBoxValue = String(row[stockCheckIdx.isBox] || '').trim().toUpperCase();
-            const stock = Number(row[stockCheckIdx.stock] || 0);
-            
-            if ((isBoxValue === 'Y' || isBoxValue === 'YES') && itemName) {
-              stockMap.set(itemName, stock);
-            }
-          }
+        // 建立商品狀態查詢表
+        const productStatusMap = new Map(); // key: cardNo or item, value: {stock, isOpen, itemName}
+        
+        for (let i = 1; i < productData.length; i++) {
+          const row = productData[i];
+          const itemName = String(row[checkIdx.item] || '').trim();
+          const cardNo = String(row[checkIdx.cardNo] || '').trim();
+          const isBoxValue = String(row[checkIdx.isBox] || '').trim().toUpperCase();
+          const stock = Number(row[checkIdx.stock] || 0);
+          const isOpen = checkIdx.isOpen > -1 ? String(row[checkIdx.isOpen] || '').trim().toUpperCase() : 'Y';
           
-          // 檢查本次下單的卡盒商品是否超過庫存
-          for (let i = 0; i < payload.entries.length; i++) {
-            const entry = payload.entries[i];
-            const isBoxFlag = String(entry.isBox).toUpperCase() === 'Y';
+          const productInfo = {
+            itemName: itemName,
+            stock: stock,
+            isOpen: isOpen,
+            isBox: (isBoxValue === 'Y' || isBoxValue === 'YES')
+          };
+          
+          // 單卡用卡號查詢
+          if (cardNo) {
+            productStatusMap.set(cardNo, productInfo);
+          }
+          // 卡盒用品項查詢
+          if ((isBoxValue === 'Y' || isBoxValue === 'YES') && itemName) {
+            productStatusMap.set(itemName, productInfo);
+          }
+        }
+        
+        // 檢查本次下單的商品
+        for (let i = 0; i < payload.entries.length; i++) {
+          const entry = payload.entries[i];
+          const isBoxFlag = String(entry.isBox).toUpperCase() === 'Y';
+          const itemName = String(entry.item || '').trim();
+          const cardNo = String(entry.cardNo || '').trim();
+          const orderQty = Number(entry.qty || 0);
+          
+          // 根據是否為卡盒選擇查詢鍵值
+          const lookupKey = isBoxFlag ? itemName : cardNo;
+          const product = productStatusMap.get(lookupKey);
+          
+          if (product) {
+            // 🔑 檢查是否開放
+            if (product.isOpen !== 'Y' && product.isOpen !== 'YES') {
+              Logger.log('商品未開放: ' + itemName + ' (卡號: ' + cardNo + ') 是否開放=' + product.isOpen);
+              return {
+                success: false,
+                message: '【' + itemName + '】已截止下單！\\n\\n請重新整理頁面查看最新商品'
+              };
+            }
             
-            if (isBoxFlag) {
-              const itemName = String(entry.item || '').trim();
-              const orderQty = Number(entry.qty || 0);
-              const currentStock = stockMap.get(itemName) || 0;
-              
-              if (orderQty > currentStock) {
-                Logger.log('庫存不足: ' + itemName + ' 下單 ' + orderQty + ' 盒 > 庫存 ' + currentStock + ' 盒');
-                return { 
-                  success: false, 
-                  message: '【' + itemName + '】庫存不足！\\n目前剩餘: ' + currentStock + ' 盒\\n您要下單: ' + orderQty + ' 盒\\n\\n請重新整理頁面後再試' 
-                };
-              }
+            // 🔑 檢查卡盒庫存
+            if (isBoxFlag && orderQty > product.stock) {
+              Logger.log('庫存不足: ' + itemName + ' 下單 ' + orderQty + ' 盒 > 庫存 ' + product.stock + ' 盒');
+              return {
+                success: false,
+                message: '【' + itemName + '】庫存不足！\\n目前剩餘: ' + product.stock + ' 盒\\n您要下單: ' + orderQty + ' 盒\\n\\n請重新整理頁面後再試'
+              };
             }
           }
         }
@@ -870,7 +850,8 @@ function addOrderEntriesToMain(payload) {
           arrival: productHeader.indexOf('到貨狀況') > -1 ? productHeader.indexOf('到貨狀況') : productHeader.indexOf('到貨狀態'),    // 第17欄 (Q欄)
           threshold: productHeader.indexOf('優惠門檻'),
           fullPrice: productHeader.indexOf('門檻價'),
-          isBox: productHeader.indexOf('卡盒預購')
+          isBox: productHeader.indexOf('卡盒預購'),
+          totalOrdered: productHeader.indexOf('已訂單卡張數') // 🔑 全站累積數量
         };
         
         Logger.log('下單商品表欄位索引 - 品項: ' + productIdx.item + ', 卡號: ' + productIdx.cardNo + ', 圖片: ' + productIdx.imgUrl + ', 到貨: ' + productIdx.arrival);
@@ -887,12 +868,14 @@ function addOrderEntriesToMain(payload) {
           const threshold = productIdx.threshold > -1 ? Number(row[productIdx.threshold] || 0) : 0;
           const fullPrice = productIdx.fullPrice > -1 ? Number(row[productIdx.fullPrice] || 0) : 0;
           const isBoxValue = productIdx.isBox > -1 ? String(row[productIdx.isBox] || '').trim().toUpperCase() : '';
+          const totalOrdered = productIdx.totalOrdered > -1 ? Number(row[productIdx.totalOrdered] || 0) : 0; // 🔑 全站累積數量
           
           const productInfo = {
             imgUrl: imgUrl,
             arrival: arrival,
             threshold: threshold,
-            fullPrice: fullPrice
+            fullPrice: fullPrice,
+            totalOrdered: totalOrdered // 🔑 全站累積數量
           };
           
           // 單卡: 用卡號作為key
@@ -903,11 +886,12 @@ function addOrderEntriesToMain(payload) {
             }
           }
           
-          // 卡盒: 用品項作為key
-          if ((isBoxValue === 'Y' || isBoxValue === 'YES') && itemName) {
+          // 🔑 所有商品(卡盒或單卡):用品項作為key (作為備用查詢)
+          if (itemName) {
             productLookupByItem.set(itemName, productInfo);
             if (i <= 3) {
-              Logger.log('卡盒品項 [' + itemName + '] - 圖片: [' + imgUrl + '], 到貨: [' + arrival + ']');
+              const type = (isBoxValue === 'Y' || isBoxValue === 'YES') ? '卡盒' : '單卡';
+              Logger.log(type + '品項 [' + itemName + '] - 圖片: [' + imgUrl + '], 到貨: [' + arrival + ']');
             }
           }
         }
@@ -920,26 +904,7 @@ function addOrderEntriesToMain(payload) {
     const rows = [];
     const timestamp = new Date(); // 取得當前時間
 
-    // 讀取現有訂單以便合併
-    const existingData = os.getDataRange().getValues();
-    const existingOrders = new Map(); // key: buyer||item||cardNo||isBox, value: [{row, data}, ...]
-    
-    for (let i = 1; i < existingData.length; i++) {
-      const row = existingData[i];
-      const buyer = idx.buyer > -1 ? String(row[idx.buyer] || '').trim() : '';
-      const item = idx.item > -1 ? String(row[idx.item] || '').trim() : '';
-      const cardNo = idx.cardNo > -1 ? String(row[idx.cardNo] || '').trim() : '';
-      const isBox = idx.isBox > -1 ? String(row[idx.isBox] || '').trim().toUpperCase() : 'N';
-      
-      if (buyer === payload.nickname) {
-        const key = buyer + '||' + item + '||' + cardNo + '||' + isBox;
-        if (!existingOrders.has(key)) {
-          existingOrders.set(key, []);
-        }
-        existingOrders.get(key).push({ row: i + 1, data: row });
-      }
-    }
-
+    // 🔑 聚合本次購物車中相同商品的數量
     const agg = new Map();
     payload.entries.forEach(e => {
       const key = [e.item, e.cardNo, e.price, e.isBox].join('||');
@@ -947,9 +912,7 @@ function addOrderEntriesToMain(payload) {
       agg.get(key).qty += Number(e.qty);
     });
 
-    const updatesToExisting = []; // 需要更新的現有訂單
-    const rowsToDelete = []; // 需要刪除的多餘訂單列
-
+    // 🔑 每次下單都建立新的獨立訂單,不合併舊訂單
     Array.from(agg.values()).forEach((e, i) => {
       const isBoxFlag = String(e.isBox).toUpperCase() === 'Y' ? 'Y' : 'N';
       const cardNoStr = String(e.cardNo || '').trim();
@@ -961,110 +924,80 @@ function addOrderEntriesToMain(payload) {
         // 卡盒: 用品項查詢
         productInfo = productLookupByItem.get(itemName);
       } else {
-        // 單卡: 用卡號查詢
-        productInfo = productLookup.get(cardNoStr);
+        // 單卡: 優先用卡號，沒有卡號則用品項
+        if (cardNoStr) {
+          productInfo = productLookup.get(cardNoStr);
+        } else {
+          productInfo = productLookupByItem.get(itemName);
+        }
       }
       
-      // 檢查是否達到優惠門檻
+      // 🔑 檢查全站累積是否達到優惠門檻(不是單筆訂單數量)
       let finalPrice = e.price;
       if (productInfo && productInfo.threshold > 0 && productInfo.fullPrice > 0) {
-        if (e.qty >= productInfo.threshold) {
+        const totalOrdered = productInfo.totalOrdered || 0;
+        if (totalOrdered >= productInfo.threshold) {
           finalPrice = productInfo.fullPrice;
-          Logger.log((isBoxFlag === 'Y' ? '品項 ' + itemName : '卡號 ' + cardNoStr) + ' 數量 ' + e.qty + ' 達到門檻 ' + productInfo.threshold + ',價格從 ' + e.price + ' 改為 ' + finalPrice);
+          Logger.log((isBoxFlag === 'Y' ? '品項 ' + itemName : '卡號 ' + cardNoStr) + ' 全站累積 ' + totalOrdered + ' 張 >= 門檻 ' + productInfo.threshold + ',使用門檻價 ' + finalPrice);
+        } else {
+          Logger.log((isBoxFlag === 'Y' ? '品項 ' + itemName : '卡號 ' + cardNoStr) + ' 全站累積 ' + totalOrdered + ' 張 < 門檻 ' + productInfo.threshold + ',使用原價 ' + finalPrice);
         }
       }
       
-      const mergeKey = payload.nickname + '||' + e.item + '||' + cardNoStr + '||' + isBoxFlag;
+      // 🔑 建立新訂單(每次下單都是獨立訂單,不合併)
+      const row = new Array(width).fill('');
       
-      // 檢查是否已有相同商品的訂單(可能有多筆)
-      if (existingOrders.has(mergeKey)) {
-        const existingList = existingOrders.get(mergeKey);
-        
-        // 計算所有現有訂單的總數量和總訂金
-        let totalExistingQty = 0;
-        let totalExistingDeposit = 0;
-        
-        existingList.forEach(existing => {
-          totalExistingQty += idx.qty > -1 ? Number(existing.data[idx.qty] || 0) : 0;
-          totalExistingDeposit += idx.deposit > -1 ? Number(existing.data[idx.deposit] || 0) : 0;
-        });
-        
-        const newQty = totalExistingQty + e.qty;
-        const newTotal = newQty * finalPrice;
-        const newBalance = newTotal - totalExistingDeposit;
-        
-        // 更新第一筆訂單
-        updatesToExisting.push({
-          row: existingList[0].row,
-          qty: newQty,
-          price: finalPrice,
-          total: newTotal,
-          balance: newBalance,
-          timestamp: timestamp
-        });
-        
-        // 標記其他訂單要刪除
-        for (let j = 1; j < existingList.length; j++) {
-          rowsToDelete.push(existingList[j].row);
+      if (idx.buyer > -1) row[idx.buyer] = payload.nickname;
+      if (idx.item > -1) row[idx.item] = e.item;
+      if (idx.qty > -1) row[idx.qty] = e.qty;
+      if (idx.price > -1) row[idx.price] = finalPrice;
+      if (idx.total > -1) row[idx.total] = e.qty * finalPrice;
+      if (idx.deposit > -1) row[idx.deposit] = 0;
+      if (idx.cardNo > -1) row[idx.cardNo] = e.cardNo;
+      if (idx.isBox > -1) row[idx.isBox] = isBoxFlag;
+      // 🔑 尾款欄位先留空,稍後統一填入公式
+      if (idx.balance > -1) row[idx.balance] = '';
+      if (idx.timestamp > -1) row[idx.timestamp] = timestamp;
+      
+      // 🔑 填入圖片連結(優先使用查詢到的,沒有則留空)
+      if (idx.imgUrl > -1) {
+        if (productInfo && productInfo.imgUrl) {
+          row[idx.imgUrl] = String(productInfo.imgUrl);
+        } else {
+          row[idx.imgUrl] = '';
         }
-        
-        Logger.log('合併訂單: ' + mergeKey + ' 原有 ' + existingList.length + ' 筆共 ' + totalExistingQty + ' 張 + 新 ' + e.qty + ' 張 = ' + newQty + ' 張');
-      } else {
-        // 新增新訂單
-        const row = new Array(width).fill('');
-        
-        if (idx.buyer > -1) row[idx.buyer] = payload.nickname;
-        if (idx.item > -1) row[idx.item] = e.item;
-        if (idx.qty > -1) row[idx.qty] = e.qty;
-        if (idx.price > -1) row[idx.price] = finalPrice;
-        if (idx.total > -1) row[idx.total] = e.qty * finalPrice;
-        if (idx.deposit > -1) row[idx.deposit] = 0;
-        if (idx.cardNo > -1) row[idx.cardNo] = e.cardNo;
-        if (idx.isBox > -1) row[idx.isBox] = isBoxFlag;
-        if (idx.balance > -1) row[idx.balance] = e.qty * finalPrice;
-        if (idx.timestamp > -1) row[idx.timestamp] = timestamp;
-        
-        // 填入從下單商品表查詢到的資料
-        if (productInfo) {
-          if (idx.imgUrl > -1) {
-            row[idx.imgUrl] = String(productInfo.imgUrl);
-          }
-          if (idx.arrival > -1 && idx.item > -1) {
-            const rowNum = startRow + rows.length;
-            const itemCol = colToA1_(idx.item + 1);
-            const arrivalFormula = `=IFERROR(VLOOKUP(${itemCol}${rowNum},'下單商品'!A:Q,17,FALSE),"")`;
-            row[idx.arrival] = arrivalFormula;
-          }
-        }
-        
-        rows.push(row);
       }
+      
+      // 🔑 填入到貨狀態公式(無論是否查詢到 productInfo 都要填入)
+      if (idx.arrival > -1 && idx.item > -1) {
+        const rowNum = startRow + rows.length;
+        const itemCol = colToA1_(idx.item + 1);
+        const arrivalFormula = `=IFERROR(VLOOKUP(${itemCol}${rowNum},'下單商品'!A:P,16,FALSE),"")`;
+        row[idx.arrival] = arrivalFormula;
+      }
+      
+      rows.push(row);
     });
 
-    // 先刪除多餘的訂單列(從後往前刪,避免列號變動)
-    if (rowsToDelete.length > 0) {
-      rowsToDelete.sort((a, b) => b - a); // 降序排列
-      rowsToDelete.forEach(rowNum => {
-        os.deleteRow(rowNum);
-      });
-      Logger.log('刪除了 ' + rowsToDelete.length + ' 筆重複訂單');
-    }
-
-    // 再更新現有訂單
-    if (updatesToExisting.length > 0) {
-      updatesToExisting.forEach(u => {
-        if (idx.qty > -1) os.getRange(u.row, idx.qty + 1).setValue(u.qty);
-        if (idx.price > -1) os.getRange(u.row, idx.price + 1).setValue(u.price);
-        if (idx.total > -1) os.getRange(u.row, idx.total + 1).setValue(u.total);
-        if (idx.balance > -1) os.getRange(u.row, idx.balance + 1).setValue(u.balance);
-        if (idx.timestamp > -1) os.getRange(u.row, idx.timestamp + 1).setValue(u.timestamp);
-      });
-      Logger.log('更新了 ' + updatesToExisting.length + ' 筆現有訂單');
-    }
-
-    // 最後新增新訂單
+    // 🔑 新增所有訂單
     if (rows.length) {
       os.getRange(startRow, 1, rows.length, width).setValues(rows);
+      
+      // 🔑 新增訂單後，將尾款欄位改為公式
+      if (idx.balance > -1 && idx.total > -1 && idx.deposit > -1) {
+        const totalCol = colToA1_(idx.total + 1);
+        const depositCol = colToA1_(idx.deposit + 1);
+        for (let i = 0; i < rows.length; i++) {
+          const rowNum = startRow + i;
+          const balanceFormula = `=${totalCol}${rowNum}-${depositCol}${rowNum}`;
+          os.getRange(rowNum, idx.balance + 1).setFormula(balanceFormula);
+        }
+      }
+      
+      // 🔑 為新增的訂單加上框線 (A欄到W欄 = 第1欄到第23欄)
+      const borderRange = os.getRange(startRow, 1, rows.length, 23);
+      borderRange.setBorder(true, true, true, true, true, true);
+      
       Logger.log('新增了 ' + rows.length + ' 筆新訂單');
     }
 
@@ -3679,29 +3612,28 @@ function updateOrderStatusToPending(orderDetails, merchantTradeNo) {
         var rowItem = String(data[i][itemIdx]).trim();
         var rowCardNo = data[i][cardNoIdx];
         
-        // 轉換時間戳記為 GMT+8 日期
+        // 轉換時間戳記為完整日期時間字串(含時分秒)
         var rowDateStr = '';
         var detailDateStr = '';
         
         if (rowTimestamp instanceof Date) {
-          rowDateStr = Utilities.formatDate(rowTimestamp, 'GMT+8', 'yyyy-MM-dd');
+          rowDateStr = Utilities.formatDate(rowTimestamp, 'GMT+8', 'yyyy-MM-dd HH:mm:ss');
         } else if (rowTimestamp) {
           try {
-            rowDateStr = Utilities.formatDate(new Date(rowTimestamp), 'GMT+8', 'yyyy-MM-dd');
+            rowDateStr = Utilities.formatDate(new Date(rowTimestamp), 'GMT+8', 'yyyy-MM-dd HH:mm:ss');
           } catch (e) {
-            rowDateStr = String(rowTimestamp).substring(0, 10);
+            rowDateStr = String(rowTimestamp);
           }
         }
         
         if (detail.timestamp instanceof Date) {
-          detailDateStr = Utilities.formatDate(detail.timestamp, 'GMT+8', 'yyyy-MM-dd');
+          detailDateStr = Utilities.formatDate(detail.timestamp, 'GMT+8', 'yyyy-MM-dd HH:mm:ss');
         } else if (detail.timestamp) {
           try {
             var detailDate = new Date(detail.timestamp);
-            detailDateStr = Utilities.formatDate(detailDate, 'GMT+8', 'yyyy-MM-dd');
+            detailDateStr = Utilities.formatDate(detailDate, 'GMT+8', 'yyyy-MM-dd HH:mm:ss');
           } catch (e) {
-            var tsStr = String(detail.timestamp);
-            detailDateStr = tsStr.indexOf('T') > -1 ? tsStr.split('T')[0] : tsStr.substring(0, 10);
+            detailDateStr = String(detail.timestamp);
           }
         }
         
@@ -3723,13 +3655,78 @@ function updateOrderStatusToPending(orderDetails, merchantTradeNo) {
       }
     }
     
+    // 🔑 立即寫入 Sheet,避免延遲或併發問題
+    SpreadsheetApp.flush();
+    
+    Logger.log('✅ 訂單狀態更新完成: ' + updatedCount + '/' + orderDetails.length + ' 筆');
+    
+    // 📧 如果有部分或全部失敗,發送 Email 通知
+    if (updatedCount < orderDetails.length) {
+      Logger.log('⚠️ 部分訂單未匹配,請檢查時間戳記或卡號是否正確');
+      
+      try {
+        var failedCount = orderDetails.length - updatedCount;
+        var emailSubject = '⚠️ 【付款狀態更新異常】訂單狀態更新失敗通知';
+        var emailBody = '付款單號: ' + (merchantTradeNo || '未提供') + '\n';
+        emailBody += '時間: ' + new Date().toLocaleString('zh-TW', {timeZone: 'Asia/Taipei'}) + '\n';
+        emailBody += '\n📊 更新結果:\n';
+        emailBody += '- 應更新: ' + orderDetails.length + ' 筆\n';
+        emailBody += '- 成功: ' + updatedCount + ' 筆\n';
+        emailBody += '- 失敗: ' + failedCount + ' 筆\n';
+        emailBody += '\n📋 訂單明細:\n';
+        
+        orderDetails.forEach(function(detail, idx) {
+          emailBody += (idx + 1) + '. ' + detail.nickname + ' - ' + detail.item;
+          if (detail.cardNo) emailBody += ' (卡號:' + detail.cardNo + ')';
+          emailBody += '\n';
+        });
+        
+        emailBody += '\n💡 可能原因:\n';
+        emailBody += '- 時間戳記格式不符\n';
+        emailBody += '- 卡號不匹配\n';
+        emailBody += '- 訂單已被刪除或修改\n';
+        emailBody += '\n請至 Google Sheets 檢查訂單狀態並手動更新。';
+        
+        MailApp.sendEmail({
+          to: 'ningscard@gmail.com',
+          subject: emailSubject,
+          body: emailBody
+        });
+        
+        Logger.log('📧 已發送錯誤通知郵件');
+      } catch (mailErr) {
+        Logger.log('⚠️ 發送郵件失敗: ' + mailErr.toString());
+      }
+    }
+    
     return { 
       success: true, 
       message: '已更新 ' + updatedCount + ' 筆訂單狀態為「付款確認中」',
-      updatedCount: updatedCount
+      updatedCount: updatedCount,
+      totalRequested: orderDetails.length
     };
     
   } catch (e) {
+    Logger.log('❌ 更新訂單狀態錯誤: ' + e.toString());
+    
+    // 📧 發送錯誤通知郵件
+    try {
+      var errorSubject = '🚨 【系統錯誤】訂單狀態更新異常';
+      var errorBody = '付款單號: ' + (merchantTradeNo || '未提供') + '\n';
+      errorBody += '時間: ' + new Date().toLocaleString('zh-TW', {timeZone: 'Asia/Taipei'}) + '\n';
+      errorBody += '\n❌ 錯誤訊息:\n' + e.toString() + '\n';
+      errorBody += '\n🔍 錯誤堆疊:\n' + (e.stack || '無堆疊資訊') + '\n';
+      errorBody += '\n📋 訂單數量: ' + (orderDetails ? orderDetails.length : 0) + ' 筆';
+      
+      MailApp.sendEmail({
+        to: 'ningscard@gmail.com',
+        subject: errorSubject,
+        body: errorBody
+      });
+    } catch (mailErr) {
+      Logger.log('⚠️ 發送錯誤郵件失敗: ' + mailErr.toString());
+    }
+    
     return { success: false, message: '更新失敗: ' + e.toString() };
   }
 }
@@ -3757,40 +3754,144 @@ function updateBreakStatusToPending(breakDetails, merchantTradeNo) {
     
     var nicknameIdx = headers.indexOf('訂購人');
     var breakIdIdx = headers.indexOf('團拆編號');
+    var breakNameIdx = headers.indexOf('團名');
     var statusIdx = headers.indexOf('狀態');
     
     if (nicknameIdx === -1 || breakIdIdx === -1 || statusIdx === -1) {
       return { success: false, message: '找不到必要欄位:訂購人/團拆編號/狀態' };
     }
     
+    Logger.log('欄位索引 - 訂購人:' + nicknameIdx + ', 團拆編號:' + breakIdIdx + ', 團名:' + breakNameIdx + ', 狀態:' + statusIdx);
+    
     var updatedCount = 0;
+    var matchDetails = [];
     
     // 遍歷團拆明細,更新狀態為「付款確認中」
     for (var d = 0; d < breakDetails.length; d++) {
       var detail = breakDetails[d];
+      var matched = false;
+      
+      Logger.log('處理第' + (d+1) + '筆: 訂購人=' + detail.nickname + ', 團拆編號=' + detail.breakId + ', 團名=' + (detail.breakName || '(未提供)'));
       
       for (var i = 1; i < data.length; i++) {
         var rowNickname = String(data[i][nicknameIdx]).trim();
         var rowBreakId = String(data[i][breakIdIdx]).trim();
+        var rowBreakName = breakNameIdx > -1 ? String(data[i][breakNameIdx]).trim() : '';
         
-        if (rowNickname === detail.nickname && rowBreakId === detail.breakId) {
+        // 🔍 三重匹配：訂購人 + 團拆編號 + 團名
+        var nicknameMatch = rowNickname === detail.nickname;
+        var breakIdMatch = rowBreakId === detail.breakId;
+        var breakNameMatch = true; // 預設為 true
+        
+        // 如果前端有提供 breakName 且後端有團名欄位，則需要團名也匹配
+        if (detail.breakName && breakNameIdx > -1) {
+          breakNameMatch = rowBreakName === detail.breakName;
+        }
+        
+        if (nicknameMatch && breakIdMatch && breakNameMatch) {
           var rowNum = i + 1;
+          
+          Logger.log('✅ 找到匹配 (第' + rowNum + '行): ' + rowNickname + ' - ' + rowBreakId + ' - ' + rowBreakName);
           
           // 更新狀態為「付款確認中」
           breakSheet.getRange(rowNum, statusIdx + 1).setValue('付款確認中');
           updatedCount++;
+          matched = true;
+          
+          matchDetails.push({
+            nickname: detail.nickname,
+            breakId: detail.breakId,
+            breakName: detail.breakName,
+            matched: true,
+            row: rowNum
+          });
+          
           break;
         }
+      }
+      
+      if (!matched) {
+        Logger.log('❌ 未找到匹配: ' + detail.nickname + ' - ' + detail.breakId + ' - ' + (detail.breakName || '(無團名)'));
+        matchDetails.push({
+          nickname: detail.nickname,
+          breakId: detail.breakId,
+          breakName: detail.breakName,
+          matched: false
+        });
+      }
+    }
+    
+    // 🔑 立即寫入 Sheet,避免延遲或併發問題
+    SpreadsheetApp.flush();
+    
+    Logger.log('✅ 團拆狀態更新完成: ' + updatedCount + '/' + breakDetails.length + ' 筆');
+    
+    // 📧 如果有部分或全部失敗,發送 Email 通知
+    if (updatedCount < breakDetails.length) {
+      Logger.log('⚠️ 部分團拆未匹配,請檢查團拆編號或訂購人是否正確');
+      
+      try {
+        var failedCount = breakDetails.length - updatedCount;
+        var emailSubject = '⚠️ 【付款狀態更新異常】團拆狀態更新失敗通知';
+        var emailBody = '付款單號: ' + (merchantTradeNo || '未提供') + '\n';
+        emailBody += '時間: ' + new Date().toLocaleString('zh-TW', {timeZone: 'Asia/Taipei'}) + '\n';
+        emailBody += '\n📊 更新結果:\n';
+        emailBody += '- 應更新: ' + breakDetails.length + ' 筆\n';
+        emailBody += '- 成功: ' + updatedCount + ' 筆\n';
+        emailBody += '- 失敗: ' + failedCount + ' 筆\n';
+        emailBody += '\n📋 團拆明細:\n';
+        
+        breakDetails.forEach(function(detail, idx) {
+          emailBody += (idx + 1) + '. ' + detail.nickname + ' - 團拆編號: ' + detail.breakId + '\n';
+        });
+        
+        emailBody += '\n💡 可能原因:\n';
+        emailBody += '- 團拆編號不匹配\n';
+        emailBody += '- 訂購人名稱不符\n';
+        emailBody += '- 團拆記錄已被刪除或修改\n';
+        emailBody += '\n請至 Google Sheets「團拆紀錄」檢查狀態並手動更新。';
+        
+        MailApp.sendEmail({
+          to: 'ningscard@gmail.com',
+          subject: emailSubject,
+          body: emailBody
+        });
+        
+        Logger.log('📧 已發送錯誤通知郵件');
+      } catch (mailErr) {
+        Logger.log('⚠️ 發送郵件失敗: ' + mailErr.toString());
       }
     }
     
     return { 
       success: true, 
       message: '已更新 ' + updatedCount + ' 筆團拆狀態為「付款確認中」',
-      updatedCount: updatedCount
+      updatedCount: updatedCount,
+      totalRequested: breakDetails.length,
+      matchDetails: matchDetails
     };
     
   } catch (e) {
+    Logger.log('❌ 更新團拆狀態錯誤: ' + e.toString());
+    
+    // 📧 發送錯誤通知郵件
+    try {
+      var errorSubject = '🚨 【系統錯誤】團拆狀態更新異常';
+      var errorBody = '付款單號: ' + (merchantTradeNo || '未提供') + '\n';
+      errorBody += '時間: ' + new Date().toLocaleString('zh-TW', {timeZone: 'Asia/Taipei'}) + '\n';
+      errorBody += '\n❌ 錯誤訊息:\n' + e.toString() + '\n';
+      errorBody += '\n🔍 錯誤堆疊:\n' + (e.stack || '無堆疊資訊') + '\n';
+      errorBody += '\n📋 團拂數量: ' + (breakDetails ? breakDetails.length : 0) + ' 筆';
+      
+      MailApp.sendEmail({
+        to: 'ningscard@gmail.com',
+        subject: errorSubject,
+        body: errorBody
+      });
+    } catch (mailErr) {
+      Logger.log('⚠️ 發送錯誤郵件失敗: ' + mailErr.toString());
+    }
+    
     return { success: false, message: '更新失敗: ' + e.toString() };
   }
 }
@@ -5126,7 +5227,164 @@ function saveDailyFortune(phone, nickname, result) {
     return { success: true, message: '抽籤紀錄已儲存' };
     
   } catch (e) {
-    Logger.log('saveDailyFortune 錯誤: ' + e.toString());
-    return { success: false, message: '儲存失敗: ' + e.toString() };
+    Logger.log('❌ saveDailyFortune 錯誤: ' + e.toString());
+    return { success: false, message: e.toString() };
+  }
+}
+
+/**
+ * 獲取用戶的團拆金餘額
+ * @param {string} nickname - 用戶暱稱
+ * @return {Object} { success: true, credit: 100, history: [...] }
+ */
+function getBreakCredit(nickname) {
+  try {
+    const ss = SpreadsheetManager.openSpreadsheet();
+    const creditSheet = ss.getSheetByName('團拆金');
+    
+    if (!creditSheet) {
+      return { success: false, message: '找不到團拆金記錄表' };
+    }
+    
+    const data = creditSheet.getDataRange().getValues();
+    const headers = data[0];
+    
+    const idx = {
+      nickname: headers.indexOf('暱稱'),
+      credit: headers.indexOf('團拆金'),
+      source: headers.indexOf('取得方式'),
+      used: headers.indexOf('是否使用'),
+      usedAmount: headers.indexOf('已使用金額'),
+      usedBreak: headers.indexOf('使用的團拆')
+    };
+    
+    let totalCredit = 0;
+    const history = [];
+    
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (String(row[idx.nickname] || '').trim() === nickname) {
+        const creditAmount = Number(row[idx.credit] || 0);
+        const usedAmount = Number(row[idx.usedAmount] || 0);
+        const remainingAmount = creditAmount - usedAmount;
+        const isUsed = String(row[idx.used] || '').trim().toUpperCase();
+        
+        // 計算剩餘可用金額
+        if (remainingAmount > 0) {
+          totalCredit += remainingAmount;
+        }
+        
+        history.push({
+          amount: creditAmount,
+          usedAmount: usedAmount,
+          remaining: remainingAmount,
+          source: row[idx.source] || '',
+          used: isUsed === 'Y' || isUsed === 'YES' || isUsed === '是',
+          usedBreak: row[idx.usedBreak] || ''
+        });
+      }
+    }
+    
+    return {
+      success: true,
+      credit: totalCredit,
+      history: history
+    };
+    
+  } catch (e) {
+    Logger.log('❌ getBreakCredit 錯誤: ' + e.toString());
+    return { success: false, message: e.toString() };
+  }
+}
+
+/**
+ * 使用團拆金
+ * @param {string} nickname - 用戶暱稱
+ * @param {number} amount - 使用金額
+ * @param {string} breakIds - 使用在哪些團拆 (逗號分隔)
+ * @return {Object} { success: true, remainingCredit: 50 }
+ */
+function useBreakCredit(nickname, amount, breakIds) {
+  try {
+    const ss = SpreadsheetManager.openSpreadsheet();
+    const creditSheet = ss.getSheetByName('團拆金');
+    
+    if (!creditSheet) {
+      return { success: false, message: '找不到團拆金記錄表' };
+    }
+    
+    const data = creditSheet.getDataRange().getValues();
+    const headers = data[0];
+    
+    const idx = {
+      nickname: headers.indexOf('暱稱'),
+      credit: headers.indexOf('團拆金'),
+      used: headers.indexOf('是否使用'),
+      usedAmount: headers.indexOf('已使用金額'),
+      usedBreak: headers.indexOf('使用的團拆')
+    };
+    
+    let remainingToUse = amount;
+    const updates = [];
+    
+    // 找出用戶的團拆金,按順序扣除
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (String(row[idx.nickname] || '').trim() === nickname && remainingToUse > 0) {
+        const creditAmount = Number(row[idx.credit] || 0);
+        const alreadyUsed = Number(row[idx.usedAmount] || 0);
+        const available = creditAmount - alreadyUsed;
+        
+        if (available > 0) {
+          const toUse = Math.min(available, remainingToUse);
+          const newUsedAmount = alreadyUsed + toUse;
+          
+          updates.push({
+            row: i + 1,
+            usedAmountCol: idx.usedAmount + 1,
+            usedCol: idx.used + 1,
+            breakCol: idx.usedBreak + 1,
+            newUsedAmount: newUsedAmount,
+            isFullyUsed: newUsedAmount >= creditAmount,
+            breakIds: breakIds
+          });
+          
+          remainingToUse -= toUse;
+          
+          if (remainingToUse <= 0) break;
+        }
+      }
+    }
+    
+    if (remainingToUse > 0) {
+      return { success: false, message: '團拆金餘額不足' };
+    }
+    
+    // 執行更新
+    updates.forEach(u => {
+      creditSheet.getRange(u.row, u.usedAmountCol).setValue(u.newUsedAmount);
+      if (u.isFullyUsed) {
+        creditSheet.getRange(u.row, u.usedCol).setValue('Y');
+      }
+      // 累加使用的團拆編號
+      const existingBreaks = String(creditSheet.getRange(u.row, u.breakCol).getValue() || '').trim();
+      const newBreaks = existingBreaks ? existingBreaks + ', ' + u.breakIds : u.breakIds;
+      creditSheet.getRange(u.row, u.breakCol).setValue(newBreaks);
+    });
+    
+    Logger.log('✅ 使用團拆金成功: ' + nickname + ' 使用 $' + amount + ' 於 ' + breakIds);
+    
+    // 計算剩餘團拆金
+    const remaining = getBreakCredit(nickname);
+    
+    return {
+      success: true,
+      message: '團拆金使用成功',
+      remainingCredit: remaining.credit || 0
+    };
+    
+  } catch (e) {
+    Logger.log('❌ useBreakCredit 錯誤: ' + e.toString());
+    return { success: false, message: e.toString() };
   }
 }

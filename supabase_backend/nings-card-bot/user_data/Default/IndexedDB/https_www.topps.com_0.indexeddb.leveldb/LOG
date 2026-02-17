@@ -1,0 +1,3 @@
+2026/02/10-02:20:00.644 93f12b Creating DB /Users/kuoch/NINGSCARDGASDEMO/supabase_backend/nings-card-bot/user_data/Default/IndexedDB/https_www.topps.com_0.indexeddb.leveldb since it was missing.
+2026/02/10-02:20:00.646 93f12b Reusing MANIFEST /Users/kuoch/NINGSCARDGASDEMO/supabase_backend/nings-card-bot/user_data/Default/IndexedDB/https_www.topps.com_0.indexeddb.leveldb/MANIFEST-000001
+2026/02/10-02:20:00.649 93f139 Manual compaction at level-0 from '\x00\x01\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x02\x00\x00\x00' @ 0 : 0; will stop at (end)

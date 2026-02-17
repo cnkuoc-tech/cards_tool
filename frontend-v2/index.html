@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Ning's Card Store</title>
+  <link rel="icon" type="image/png" href="https://i.postimg.cc/jSFPPTp5/photo-output.png">
+  
+  <!-- CSS -->
+  <style>
+    :root {
+      --navy: #0a2342;
+      --navy-2: #1c3a63;
+      --orange: #e67e22;
+      --red: #d32f2f;
+      --green: #28a745;
+      --bg-light: #f8f9fa;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      padding-top: 60px;
+      overflow-x: hidden;
+    }
+    
+    /* 浮水印 */
+    body::after {
+      content: "";
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: url('https://i.postimg.cc/jSFPPTp5/photo-output.png');
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: 40%;
+      z-index: 99999;
+      pointer-events: none;
+      opacity: 0.05;
+    }
+    
+    /* Header */
+    .app-header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 60px;
+      background: linear-gradient(90deg, var(--navy), var(--navy-2));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 15px;
+      z-index: 2000;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+    }
+    
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    
+    .menu-btn {
+      background: none;
+      border: none;
+      color: white;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 5px;
+    }
+    
+    .header-title {
+      color: white;
+      font-weight: bold;
+      font-size: 18px;
+      letter-spacing: 1px;
+      cursor: pointer;
+    }
+    
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .nav-btn {
+      background: rgba(255,255,255,0.15);
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: 0.2s;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    
+    .nav-btn:hover {
+      background: rgba(255,255,255,0.25);
+    }
+    
+    .cart-btn {
+      position: relative;
+    }
+    
+    .cart-badge {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      background: var(--red);
+      color: white;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: bold;
+      border: 2px solid #fff;
+    }
+    
+    /* Sidebar */
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 280px;
+      background: #fff;
+      z-index: 2500;
+      transform: translateX(-100%);
+      transition: transform 0.3s ease-in-out;
+      box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .sidebar.open {
+      transform: translateX(0);
+    }
+    
+    .sidebar-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 2400;
+      display: none;
+      backdrop-filter: blur(2px);
+    }
+    
+    .sidebar-overlay.show {
+      display: block;
+    }
+    
+    .sidebar-header {
+      background: var(--bg-light);
+      color: #333;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    
+    .sidebar-header.logged-in {
+      background: var(--navy);
+      color: white;
+    }
+    
+    .user-info {
+      font-size: 16px;
+      font-weight: bold;
+    }
+    
+    .sidebar-menu {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 0;
+    }
+    
+    .menu-item {
+      display: flex;
+      align-items: center;
+      padding: 15px 20px;
+      color: #333;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      border-left: 4px solid transparent;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    
+    .menu-item:hover {
+      background: #f8f9fa;
+    }
+    
+    .menu-item.active {
+      background: #e3f2fd;
+      color: var(--navy);
+      border-left-color: var(--navy);
+      font-weight: bold;
+    }
+    
+    .menu-icon {
+      margin-right: 12px;
+      font-size: 18px;
+    }
+    
+    .member-only {
+      display: none;
+    }
+    
+    .member-only.show {
+      display: block;
+    }
+    
+    /* Main Container */
+    .container {
+      max-width: 1200px;
+      margin: 20px auto;
+      background: #fff;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+      min-height: 80vh;
+    }
+    
+    /* Loading Overlay */
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 9999;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(3px);
+    }
+    
+    .loading-overlay.show {
+      display: flex;
+    }
+    
+    .loading-spinner {
+      background: white;
+      padding: 30px 40px;
+      border-radius: 12px;
+      text-align: center;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+    
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid var(--navy);
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    /* Buttons */
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: 0.2s;
+      font-size: 14px;
+      text-decoration: none;
+      display: inline-block;
+      text-align: center;
+    }
+    
+    .btn-primary {
+      background: var(--navy);
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background: var(--navy-2);
+    }
+    
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+    }
+    
+    .btn-secondary:hover {
+      background: #5a6268;
+    }
+    
+    .btn:disabled {
+      background: #bdc3c7 !important;
+      cursor: not-allowed;
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+      .container {
+        margin: 10px;
+        padding: 15px;
+      }
+      
+      .header-title {
+        font-size: 16px;
+      }
+      
+      .nav-btn {
+        padding: 6px 10px;
+        font-size: 12px;
+      }
+      
+      .nav-btn-text {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-left">
+      <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+      <div class="header-title" onclick="router.navigate('/')">Ning's Card</div>
+    </div>
+    <div class="header-right" id="headerActions">
+      <!-- 動態插入登入/購物車按鈕 -->
+    </div>
+  </header>
+  
+  <!-- Sidebar -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-header" id="sidebarHeader">
+      <div class="user-info" id="userInfo">未登入</div>
+    </div>
+    <div class="sidebar-menu" id="sidebarMenu">
+      <!-- 動態插入選單項目 -->
+    </div>
+  </nav>
+  
+  <!-- Main Content -->
+  <main id="app" class="container">
+    <div style="text-align:center;padding:100px 20px;">
+      <div class="spinner"></div>
+      <p style="color:#666;margin-top:20px;">載入中...</p>
+    </div>
+  </main>
+  
+  <!-- Loading Overlay -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner">
+      <div class="spinner"></div>
+      <div id="loadingText">處理中...</div>
+    </div>
+  </div>
+  
+  <!-- Scripts -->
+  <script src="/js/router.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/app.js"></script>
+  
+  <!-- Page Scripts -->
+  <script src="/js/pages/home.js"></script>
+  <script src="/js/pages/login.js"></script>
+  <script src="/js/pages/products.js"></script>
+  <script src="/js/pages/orders.js"></script>
+  
+  <script>
+    // 初始化應用程式
+    document.addEventListener('DOMContentLoaded', () => {
+      window.app.init()
+    })
+  </script>
+</body>
+</html>

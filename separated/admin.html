@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ning's card 後台管理系統</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+      background: #f0f2f5;
+      color: #2c3e50;
+    }
+    
+    .login-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background: linear-gradient(135deg, #0a2342 0%, #1c3a63 100%);
+    }
+    
+    .login-box {
+      background: white;
+      padding: 50px;
+      border-radius: 15px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      width: 350px;
+    }
+    
+    .login-box h1 {
+      text-align: center;
+      margin-bottom: 10px;
+      color: #0a2342;
+      font-size: 24px;
+    }
+    
+    .login-box .subtitle {
+      text-align: center;
+      color: #999;
+      margin-bottom: 30px;
+      font-size: 12px;
+    }
+    
+    .login-box input {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 20px;
+      border: 2px solid #e1e8ed;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+    
+    .login-box input:focus {
+      outline: none;
+      border-color: #0a2342;
+    }
+    
+    .login-box button {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, #0a2342 0%, #1c3a63 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: bold;
+      transition: transform 0.2s;
+    }
+    
+    .login-box button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(10, 35, 66, 0.3);
+    }
+    
+    .admin-container {
+      display: none;
+      flex-direction: column;
+      height: 100vh;
+    }
+    
+    .navbar {
+      background: linear-gradient(135deg, #0a2342 0%, #1c3a63 100%);
+      color: white;
+      padding: 20px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .navbar h1 {
+      font-size: 22px;
+      font-weight: 600;
+    }
+    
+    .navbar button {
+      background: rgba(255,255,255,0.2);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.3);
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    
+    .navbar button:hover {
+      background: rgba(255,255,255,0.3);
+    }
+    
+    .sidebar {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+    
+    .menu {
+      width: 220px;
+      background: #0a2342;
+      color: white;
+      overflow-y: auto;
+      padding: 20px 0;
+    }
+    
+    .menu button {
+      width: 100%;
+      padding: 15px 20px;
+      background: none;
+      border: none;
+      color: #ecf0f1;
+      text-align: left;
+      cursor: pointer;
+      border-left: 4px solid transparent;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+    
+    .menu button:hover {
+      background: rgba(255,255,255,0.1);
+      padding-left: 24px;
+    }
+    
+    .menu button.active {
+      background: linear-gradient(90deg, rgba(10,35,66,0.5) 0%, rgba(28,58,99,0.5) 100%);
+      border-left-color: #e67e22;
+      color: #fff;
+      font-weight: 600;
+    }
+    
+    .content {
+      flex: 1;
+      padding: 30px;
+      overflow-y: auto;
+      background: #f0f2f5;
+    }
+    
+    .tab-content {
+      display: none;
+    }
+    
+    .tab-content.active {
+      display: block;
+      animation: fadeIn 0.3s;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    .section-title {
+      font-size: 28px;
+      margin-bottom: 25px;
+      color: #2c3e50;
+      font-weight: 600;
+    }
+    
+    .search-box {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 25px;
+      display: flex;
+      gap: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      flex-wrap: wrap;
+    }
+    
+    .search-box input, .search-box select {
+      padding: 10px 14px;
+      border: 2px solid #e1e8ed;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+    
+    .search-box input:focus, .search-box select:focus {
+      outline: none;
+      border-color: #0a2342;
+    }
+    
+    .search-box button {
+      padding: 10px 25px;
+      background: linear-gradient(135deg, #0a2342 0%, #1c3a63 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: transform 0.2s;
+    }
+    
+    .search-box button:hover {
+      transform: translateY(-2px);
+    }
+    
+    table {
+      width: 100%;
+      background: white;
+      border-collapse: collapse;
+      margin-bottom: 30px;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    }
+    
+    th, td {
+      padding: 15px;
+      text-align: left;
+      border-bottom: 1px solid #e1e8ed;
+      font-size: 14px;
+    }
+    
+    th {
+      background: linear-gradient(135deg, #0a2342 0%, #1c3a63 100%);
+      color: white;
+      font-weight: 600;
+    }
+    
+    tr:hover {
+      background: #f8f9fb;
+    }
+    
+    .action-btn {
+      padding: 8px 14px;
+      margin: 0 4px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      transition: all 0.3s;
+    }
+    
+    .btn-edit {
+      background: #3498db;
+      color: white;
+    }
+    
+    .btn-edit:hover {
+      background: #2980b9;
+      transform: translateY(-2px);
+    }
+    
+    .btn-delete {
+      background: #e74c3c;
+      color: white;
+    }
+    
+    .btn-delete:hover {
+      background: #c0392b;
+      transform: translateY(-2px);
+    }
+    
+    .btn-confirm {
+      background: #27ae60;
+      color: white;
+    }
+    
+    .btn-confirm:hover {
+      background: #229954;
+      transform: translateY(-2px);
+    }
+    
+    .form-group {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      margin-bottom: 25px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    }
+    
+    .form-group h3 {
+      font-size: 18px;
+      margin-bottom: 20px;
+      color: #2c3e50;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-top: 15px;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #2c3e50;
+      font-size: 14px;
+    }
+    
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e1e8ed;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: border-color 0.3s;
+    }
+    
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: none;
+      border-color: #0a2342;
+      background: #f8f9ff;
+    }
+    
+    .form-group textarea {
+      resize: vertical;
+      min-height: 120px;
+    }
+    
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    
+    .btn-submit {
+      padding: 12px 30px;
+      background: linear-gradient(135deg, #0a2342 0%, #1c3a63 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 600;
+      margin-top: 15px;
+      transition: all 0.3s;
+    }
+    
+    .btn-submit:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(10, 35, 66, 0.3);
+    }
+    
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.6);
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .modal.show {
+      display: flex;
+    }
+    
+    .modal-content {
+      background: white;
+      padding: 40px;
+      border-radius: 15px;
+      width: 90%;
+      max-width: 600px;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      animation: slideUp 0.3s;
+    }
+    
+    @keyframes slideUp {
+      from { transform: translateY(30px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 25px;
+      border-bottom: 2px solid #e1e8ed;
+      padding-bottom: 15px;
+    }
+    
+    .modal-header h3 {
+      font-size: 20px;
+      color: #2c3e50;
+    }
+    
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 28px;
+      cursor: pointer;
+      color: #999;
+      transition: color 0.3s;
+    }
+    
+    .modal-close:hover {
+      color: #667eea;
+    }
+  </style>
+</head>
+<body>
+  <!-- 登入頁面 -->
+  <div class="login-container" id="loginPage">
+    <div class="login-box">
+      <h1>💳 Ning's card</h1>
+      <div class="subtitle">後台管理系統</div>
+      <input type="password" id="adminPassword" placeholder="輸入管理員密碼" />
+      <button onclick="adminLogin()">登入</button>
+    </div>
+  </div>
+  
+  <!-- 後台主頁面 -->
+  <div class="admin-container" id="adminPage">
+    <div class="navbar">
+      <h1>💳 Ning's card 後台管理系統</h1>
+      <button onclick="adminLogout()">登出</button>
+    </div>
+    
+    <div class="sidebar">
+      <div class="menu">
+        <button class="menu-btn active" onclick="switchTab('notifications')">📋 對帳管理</button>
+        <button class="menu-btn" onclick="switchTab('orders')">📦 訂單管理</button>
+        <button class="menu-btn" onclick="switchTab('users')">👥 用戶管理</button>
+        <button class="menu-btn" onclick="switchTab('products')">🎁 商品管理</button>
+      </div>
+      
+      <div class="content">
+        <!-- 對帳管理 -->
+        <div class="tab-content active" id="notifications-tab">
+          <h2 class="section-title">📋 對帳管理</h2>
+          <button onclick="loadNotifications()" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 20px;">刷新待對帳</button>
+          <div id="notificationsList"></div>
+        </div>
+        
+        <!-- 訂單管理 -->
+        <div class="tab-content" id="orders-tab">
+          <h2 class="section-title">📦 訂單管理</h2>
+          <div class="search-box">
+            <input type="text" id="searchPhone" placeholder="客戶電話號碼" />
+            <input type="text" id="searchNickname" placeholder="客戶暱稱" />
+            <input type="text" id="searchItem" placeholder="商品關鍵字搜尋" />
+            <button onclick="searchOrders()">🔍 搜尋</button>
+          </div>
+          <div id="ordersList"></div>
+        </div>
+        
+        <!-- 用戶管理 -->
+        <div class="tab-content" id="users-tab">
+          <h2 class="section-title">👥 用戶管理</h2>
+          <div class="search-box">
+            <input type="text" id="searchUserPhone" placeholder="客戶電話號碼" />
+            <input type="text" id="searchUserNickname" placeholder="客戶暱稱" />
+            <button onclick="searchUsers()">🔍 搜尋</button>
+            <button onclick="loadUsers()" style="background: #e67e22; margin-left: 10px;">📋 全部用戶</button>
+          </div>
+          <div id="usersList"></div>
+        </div>
+        
+        <!-- 商品管理 -->
+        <div class="tab-content" id="products-tab">
+          <h2 class="section-title">🎁 商品管理</h2>
+          <div class="form-group">
+            <h3>新增商品</h3>
+            <div class="form-row">
+              <div>
+                <label>商品名稱 *</label>
+                <input type="text" id="productName" placeholder="例: 2026 Topps Series 1" />
+              </div>
+              <div>
+                <label>卡號 *</label>
+                <input type="text" id="productCardNo" placeholder="例: 001" />
+              </div>
+            </div>
+            
+            <div class="form-row">
+              <div>
+                <label>價格 (NT$) *</label>
+                <input type="number" id="productPrice" placeholder="例: 310" />
+              </div>
+              <div>
+                <label>門檻價 (NT$)</label>
+                <input type="number" id="productThreshold" placeholder="例: 3100" />
+              </div>
+            </div>
+            
+            <div class="form-row">
+              <div>
+                <label>類型</label>
+                <select id="productIsBox">
+                  <option value="false">單卡</option>
+                  <option value="true">卡盒</option>
+                </select>
+              </div>
+              <div>
+                <label>庫存狀態</label>
+                <select id="productStock">
+                  <option value="P">已上架</option>
+                  <option value="O">缺貨</option>
+                  <option value="N">下架</option>
+                </select>
+              </div>
+            </div>
+            
+            <label>商品說明</label>
+            <textarea id="productDescription" placeholder="輸入商品詳細說明..."></textarea>
+            
+            <button class="btn-submit" onclick="addProduct()">✨ 新增商品</button>
+          </div>
+          
+          <div class="form-group" style="background: #fff3cd; border-left: 4px solid #ffc107;">
+            <h3 style="color: #856404;">🧹 數據清理</h3>
+            <p style="color: #856404; margin-bottom: 15px; font-size: 14px;">刪除所有 password 為 NULL 的重複用戶記錄</p>
+            <button class="btn-submit" style="background: #dc3545;" onclick="cleanupDuplicateUsers()">⚠️ 清理重複用戶</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 編輯訂單模態視窗 -->
+  <div class="modal" id="editOrderModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>編輯訂單</h3>
+        <button class="modal-close" onclick="closeModal('editOrderModal')">&times;</button>
+      </div>
+      <div class="form-group">
+        <label>訂單ID</label>
+        <input type="text" id="editOrderId" readonly />
+        
+        <label>商品</label>
+        <input type="text" id="editOrderItem" readonly />
+        
+        <label>狀態</label>
+        <select id="editOrderStatus">
+          <option value="待確認">待確認</option>
+          <option value="付款確認中">付款確認中</option>
+          <option value="已結清">已結清</option>
+        </select>
+        
+        <label>尾款</label>
+        <input type="number" id="editOrderBalance" />
+        
+        <label>備註</label>
+        <textarea id="editOrderNotes"></textarea>
+        
+        <button class="btn-submit" onclick="updateOrderModal()">更新訂單</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 編輯用戶模態視窗 -->
+  <div class="modal" id="editUserModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>編輯用戶</h3>
+        <button class="modal-close" onclick="closeModal('editUserModal')">&times;</button>
+      </div>
+      <div class="form-group">
+        <label>電話 (不可編輯)</label>
+        <input type="text" id="editUserPhone" readonly />
+        
+        <label>暱稱</label>
+        <input type="text" id="editUserNickname" />
+        
+        <label>Email</label>
+        <input type="email" id="editUserEmail" />
+        
+        <label>收件門市</label>
+        <input type="text" id="editUserAddress" />
+        
+        <label>真名</label>
+        <input type="text" id="editUserRealName" />
+        
+        <button class="btn-submit" onclick="updateUserModal()">更新用戶</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'https://supabase.cnkuoc.workers.dev/api';
+    let adminToken = null;
+    
+    async function callAPI(action, params = {}) {
+      try {
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, ...params })
+        });
+        const text = await response.text();
+        return JSON.parse(text);
+      } catch (error) {
+        console.error('[API Error]', error);
+        return { success: false, message: error.message };
+      }
+    }
+    
+    async function adminLogin() {
+      const password = document.getElementById('adminPassword').value;
+      if (!password) {
+        alert('請輸入密碼');
+        return;
+      }
+      
+      const res = await callAPI('adminLogin', { password });
+      if (res.success) {
+        adminToken = res.token;
+        document.getElementById('loginPage').style.display = 'none';
+        document.getElementById('adminPage').style.display = 'flex';
+        loadNotifications();
+      } else {
+        alert(res.message);
+      }
+    }
+    
+    function adminLogout() {
+      adminToken = null;
+      document.getElementById('loginPage').style.display = 'flex';
+      document.getElementById('adminPage').style.display = 'none';
+      document.getElementById('adminPassword').value = '';
+    }
+    
+    function switchTab(tab) {
+      // 隱藏所有 tab
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.menu-btn').forEach(el => el.classList.remove('active'));
+      
+      // 顯示選中的 tab
+      document.getElementById(tab + '-tab').classList.add('active');
+      event.target.classList.add('active');
+    }
+    
+    async function loadNotifications() {
+      const res = await callAPI('getNotifications', { limit: 100 });
+      if (!res.success) {
+        alert('載入失敗: ' + res.message);
+        return;
+      }
+      
+      const notifications = res.notifications || [];
+      let html = '';
+      
+      notifications.forEach(notif => {
+        const content = notif.contentParsed || {};
+        const time = new Date(notif.sent_at).toLocaleString('zh-TW');
+        const relatedOrders = notif.relatedOrders || [];
+        
+        html += `<div class="notification-card" style="border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; border-radius: 5px; background: #f9f9f9;">
+          <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+            <div style="flex: 1;">
+              <h4 style="margin: 0 0 8px 0; color: #0a2342;">${notif.nickname || '未知'} (${notif.phone || '-'})</h4>
+              <div style="font-size: 12px; color: #666;">
+                <span>📝 ${content.paymentType === 'order' ? '訂單' : '團拆'} | </span>
+                <span>💰 NT$ ${content.paidAmount || 0} | </span>
+                <span>🏦 尾碼: ${content.accountLast5 || '-'} | </span>
+                <span>⏰ ${time}</span>
+              </div>
+            </div>
+            <div style="margin-left: 20px;">
+              <span style="background: ${notif.status === 'confirmed' ? '#d4edda' : '#fff3cd'}; color: ${notif.status === 'confirmed' ? '#155724' : '#856404'}; padding: 5px 10px; border-radius: 3px; font-size: 12px; font-weight: bold;">
+                ${notif.status === 'confirmed' ? '✓ 已對帳' : '⚠ 待對帳'}
+              </span>
+            </div>
+          </div>
+          
+          <div style="background: white; padding: 10px; border-radius: 3px; margin-bottom: 12px;">
+            <h5 style="margin: 0 0 10px 0; color: #333; font-size: 13px;">📦 關聯訂單:</h5>
+            ${relatedOrders.length > 0 ? `
+              <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+                <tr style="background: #f5f5f5;">
+                  <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd;">商品</th>
+                  <th style="padding: 8px; text-align: center; border-bottom: 1px solid #ddd;">卡號</th>
+                  <th style="padding: 8px; text-align: center; border-bottom: 1px solid #ddd;">數量</th>
+                  <th style="padding: 8px; text-align: right; border-bottom: 1px solid #ddd;">尾款</th>
+                  <th style="padding: 8px; text-align: center; border-bottom: 1px solid #ddd;">狀態</th>
+                  <th style="padding: 8px; text-align: center; border-bottom: 1px solid #ddd;">操作</th>
+                </tr>
+                ${relatedOrders.map(order => `
+                  <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 8px;">${order.item || '-'}</td>
+                    <td style="padding: 8px; text-align: center;">${order.card_no || '-'}</td>
+                    <td style="padding: 8px; text-align: center;">${order.quantity || '-'}</td>
+                    <td style="padding: 8px; text-align: right; font-weight: bold;">NT$ ${order.balance_amount || 0}</td>
+                    <td style="padding: 8px; text-align: center; font-size: 11px;">${order.status || '-'}</td>
+                    <td style="padding: 8px; text-align: center;">
+                      <button class="action-btn btn-edit" style="font-size: 11px; padding: 4px 8px;" onclick="editOrder('${order.id}', '${order.item || ''}', '${order.status || ''}', ${order.balance_amount || 0}, '${(order.notes || '').replace(/'/g, "\\'")}')" title="編輯此訂單">編輯</button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </table>
+            ` : '<p style="color: #999; font-size: 12px; margin: 0;">未找到相關訂單</p>'}
+          </div>
+          
+          <div style="display: flex; gap: 8px;">
+            ${notif.status !== 'confirmed' ? `
+              <button class="action-btn btn-confirm" style="flex: 1;" onclick="confirmNotification('${notif.id}')">✓ 已對帳</button>
+            ` : ''}
+            <button class="action-btn btn-delete" style="flex: 1;" onclick="deleteNotification('${notif.id}')">🗑 刪除</button>
+          </div>
+        </div>`;
+      });
+      
+      if (notifications.length === 0) {
+        html = '<p style="text-align: center; color: #999; padding: 40px;">沒有待對帳的付款通知</p>';
+      }
+      
+      document.getElementById('notificationsList').innerHTML = html;
+    }
+    
+    async function confirmNotification(id) {
+      if (confirm('確認已對帳？')) {
+        const res = await callAPI('updateNotification', { id, status: 'confirmed' });
+        if (res.success) {
+          alert('已確認');
+          loadNotifications();
+        } else {
+          alert('失敗: ' + res.message);
+        }
+      }
+    }
+    
+    async function deleteNotification(id) {
+      if (confirm('確定要刪除？')) {
+        const res = await callAPI('deleteNotification', { id });
+        if (res.success) {
+          alert('已刪除');
+          loadNotifications();
+        } else {
+          alert('失敗: ' + res.message);
+        }
+      }
+    }
+    
+    async function searchOrders() {
+      const phone = document.getElementById('searchPhone').value.trim();
+      const nickname = document.getElementById('searchNickname').value.trim();
+      const item = document.getElementById('searchItem').value.trim();
+      
+      if (!phone && !nickname && !item) {
+        alert('請輸入至少一個搜尋條件');
+        return;
+      }
+      
+      console.log('[searchOrders] 搜尋條件:', { phone, nickname, item });
+      
+      const res = await callAPI('searchOrders', { phone, nickname, item, limit: 100 });
+      console.log('[searchOrders] 回應:', res);
+      
+      if (!res.success) {
+        alert('搜尋失敗: ' + res.message);
+        return;
+      }
+      
+      const orders = res.orders || [];
+      if (orders.length === 0) {
+        document.getElementById('ordersList').innerHTML = '<p style="text-align: center; color: #999; padding: 40px;">沒有找到相符的訂單</p>';
+        return;
+      }
+      
+      let html = '<table>';
+      html += '<tr><th>客戶</th><th>電話</th><th>商品</th><th>卡號</th><th>數量</th><th>總價</th><th>尾款</th><th>狀態</th><th>操作</th></tr>';
+      
+      orders.forEach(order => {
+        html += `<tr>
+          <td>${order.nickname || '-'}</td>
+          <td>${order.phone || '-'}</td>
+          <td>${order.item || '-'}</td>
+          <td>${order.card_no || '-'}</td>
+          <td>${order.quantity || '-'}</td>
+          <td>NT$ ${order.total_fee || 0}</td>
+          <td>NT$ ${order.balance_amount || 0}</td>
+          <td><strong>${order.status || '未知'}</strong></td>
+          <td>
+            <button class="action-btn btn-edit" onclick="editOrder('${order.id}', '${order.item || ''}', '${order.status || ''}', ${order.balance_amount || 0}, '${(order.notes || '').replace(/'/g, "\\'")}')">編輯</button>
+          </td>
+        </tr>`;
+      });
+      
+      html += '</table>';
+      document.getElementById('ordersList').innerHTML = html;
+    }
+    
+    function editOrder(id, item, status, balance, notes) {
+      document.getElementById('editOrderId').value = id;
+      document.getElementById('editOrderItem').value = item;
+      document.getElementById('editOrderStatus').value = status;
+      document.getElementById('editOrderBalance').value = balance;
+      document.getElementById('editOrderNotes').value = notes;
+      document.getElementById('editOrderModal').classList.add('show');
+    }
+    
+    async function updateOrderModal() {
+      const id = document.getElementById('editOrderId').value;
+      const status = document.getElementById('editOrderStatus').value;
+      const balance = document.getElementById('editOrderBalance').value;
+      const notes = document.getElementById('editOrderNotes').value;
+      
+      const res = await callAPI('updateOrder', {
+        id,
+        status,
+        balance_amount: Number(balance),
+        notes
+      });
+      
+      if (res.success) {
+        alert('訂單已更新');
+        closeModal('editOrderModal');
+        searchOrders();
+      } else {
+        alert('更新失敗: ' + res.message);
+      }
+    }
+    
+    async function loadUsers() {
+      const res = await callAPI('getUsers', { limit: 100 });
+      if (!res.success) {
+        alert('載入失敗: ' + res.message);
+        return;
+      }
+      
+      const users = res.users || [];
+      renderUsersTable(users);
+    }
+    
+    async function searchUsers() {
+      const phone = document.getElementById('searchUserPhone').value.trim();
+      const nickname = document.getElementById('searchUserNickname').value.trim();
+      
+      if (!phone && !nickname) {
+        alert('請輸入搜尋條件');
+        return;
+      }
+      
+      const res = await callAPI('searchUsers', { phone, nickname, limit: 100 });
+      if (!res.success) {
+        alert('搜尋失敗: ' + res.message);
+        return;
+      }
+      
+      const users = res.users || [];
+      if (users.length === 0) {
+        document.getElementById('usersList').innerHTML = '<p style="text-align: center; color: #999; padding: 40px;">沒有找到相符的用戶</p>';
+        return;
+      }
+      
+      renderUsersTable(users);
+    }
+    
+    function renderUsersTable(users) {
+      let html = '<table>';
+      html += '<tr><th>暱稱</th><th>電話</th><th>Email</th><th>收件門市</th><th>操作</th></tr>';
+      
+      users.forEach(user => {
+        const phone = user.phone ? user.phone.toString() : '-';
+        html += `<tr>
+          <td>${user.nickname || '-'}</td>
+          <td>${phone}</td>
+          <td>${user.email || '-'}</td>
+          <td>${user.address || '-'}</td>
+          <td>
+            <button class="action-btn btn-edit" onclick="editUser('${phone}', '${(user.nickname || '').replace(/'/g, "\\'")}', '${(user.email || '').replace(/'/g, "\\'")}', '${(user.address || '').replace(/'/g, "\\'")}', '${(user.real_name || '').replace(/'/g, "\\'")}')" style="width: 100%; padding: 10px;">編輯</button>
+          </td>
+        </tr>`;
+      });
+      
+      html += '</table>';
+      document.getElementById('usersList').innerHTML = html;
+    }
+    
+    function editUser(phone, nickname, email, address, realName) {
+      document.getElementById('editUserPhone').value = phone;
+      document.getElementById('editUserNickname').value = nickname;
+      document.getElementById('editUserEmail').value = email;
+      document.getElementById('editUserAddress').value = address;
+      document.getElementById('editUserRealName').value = realName;
+      document.getElementById('editUserModal').classList.add('show');
+    }
+    
+    async function updateUserModal() {
+      const phone = document.getElementById('editUserPhone').value;
+      const nickname = document.getElementById('editUserNickname').value;
+      const email = document.getElementById('editUserEmail').value;
+      const address = document.getElementById('editUserAddress').value;
+      const realName = document.getElementById('editUserRealName').value;
+      
+      const res = await callAPI('updateUser', {
+        phone,
+        nickname,
+        email,
+        address,
+        real_name: realName
+      });
+      
+      if (res.success) {
+        alert('用戶已更新');
+        closeModal('editUserModal');
+        loadUsers();
+      } else {
+        alert('更新失敗: ' + res.message);
+      }
+    }
+    
+    async function addProduct() {
+      const name = document.getElementById('productName').value;
+      const cardNo = document.getElementById('productCardNo').value;
+      const price = document.getElementById('productPrice').value;
+      const threshold = document.getElementById('productThreshold').value;
+      const isBox = document.getElementById('productIsBox').value === 'true';
+      const stock = document.getElementById('productStock').value;
+      const desc = document.getElementById('productDescription').value;
+      
+      if (!name || !cardNo || !price) {
+        alert('請填寫必填欄位');
+        return;
+      }
+      
+      const res = await callAPI('addProduct', {
+        item_name: name,
+        card_no: cardNo,
+        price: Number(price),
+        threshold_price: Number(threshold) || 0,
+        is_box_preorder: isBox,
+        stock_status: stock,
+        description: desc
+      });
+      
+      if (res.success) {
+        alert('商品已新增');
+        document.getElementById('productName').value = '';
+        document.getElementById('productCardNo').value = '';
+        document.getElementById('productPrice').value = '';
+        document.getElementById('productThreshold').value = '';
+        document.getElementById('productIsBox').value = 'false';
+        document.getElementById('productStock').value = 'P';
+        document.getElementById('productDescription').value = '';
+      } else {
+        alert('新增失敗: ' + res.message);
+      }
+    }
+    
+    function closeModal(modalId) {
+      document.getElementById(modalId).classList.remove('show');
+    }
+    
+    async function cleanupDuplicateUsers() {
+      if (!confirm('⚠️ 確定要刪除所有 password 為 NULL 的重複用戶嗎？\n\n此操作將同時刪除相關的出貨記錄，無法復原！')) {
+        return;
+      }
+      
+      if (!confirm('再次確認：是否要繼續？')) {
+        return;
+      }
+      
+      alert('正在清理中，請稍候...');
+      
+      const res = await callAPI('cleanupDuplicateUsers', { adminPassword: 'ning123' });
+      
+      if (res.success) {
+        alert('✅ 清理完成！\n\n已刪除：\n- 用戶：' + res.deletedUsers + ' 個\n- 出貨記錄：' + res.deletedShipments + ' 個\n\n請重新刷新用戶列表');
+        loadUsers();
+      } else {
+        alert('❌ 清理失敗: ' + res.message);
+      }
+    }
+  </script>
+</body>
+</html>

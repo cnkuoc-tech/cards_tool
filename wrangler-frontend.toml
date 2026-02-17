@@ -1,0 +1,6 @@
+name = "ning-cards-supabase"
+main = "worker_supabase.js"
+compatibility_date = "2024-01-01"
+
+# 前端網頁（Supabase 版本）
+# 部署指令：wrangler deploy --config wrangler-frontend.toml

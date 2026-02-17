@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>資料驗證工具</title>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      font-family: 'Microsoft JhengHei', Arial, sans-serif;
+      max-width: 1200px;
+      margin: 20px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      color: #333;
+      border-bottom: 3px solid #2196F3;
+      padding-bottom: 10px;
+    }
+    .button {
+      background: #2196F3;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      cursor: pointer;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
+    .button:hover {
+      background: #1976D2;
+    }
+    .button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    #result {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-top: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .success { color: #4CAF50; font-weight: bold; }
+    .error { color: #f44336; font-weight: bold; }
+    .warning { color: #FF9800; font-weight: bold; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background: #2196F3;
+      color: white;
+    }
+    tr:nth-child(even) {
+      background: #f9f9f9;
+    }
+    pre {
+      background: #263238;
+      color: #aed581;
+      padding: 15px;
+      border-radius: 4px;
+      overflow-x: auto;
+      font-size: 12px;
+    }
+    .section {
+      margin: 20px 0;
+      padding: 15px;
+      background: #f9f9f9;
+      border-left: 4px solid #2196F3;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔍 Supabase 資料驗證工具</h1>
+  
+  <div>
+    <button class="button" onclick="runVerification()">開始驗證所有資料</button>
+    <button class="button" onclick="clearResult()">清除結果</button>
+  </div>
+  
+  <div id="result"></div>
+
+  <script>
+    const WORKER_URL = 'https://ning-card-products.cnkuoc.workers.dev';  // 替換成你的 Worker URL
+    
+    async function runVerification() {
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = '驗證中...';
+      
+      const resultDiv = document.getElementById('result');
+      resultDiv.innerHTML = '<p>⏳ 正在驗證資料...</p>';
+      
+      try {
+        const response = await fetch(WORKER_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'verifyData' })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          displayResults(data.results);
+        } else {
+          resultDiv.innerHTML = `<p class="error">❌ 驗證失敗: ${data.error || data.message}</p>`;
+          if (data.partialResults) {
+            resultDiv.innerHTML += '<p>部分結果：</p><pre>' + JSON.stringify(data.partialResults, null, 2) + '</pre>';
+          }
+        }
+        
+      } catch (error) {
+        resultDiv.innerHTML = `<p class="error">❌ 連線錯誤: ${error.message}</p>`;
+      }
+      
+      btn.disabled = false;
+      btn.textContent = '開始驗證所有資料';
+    }
+    
+    function displayResults(results) {
+      const resultDiv = document.getElementById('result');
+      let html = '<h2 class="success">✅ 驗證完成</h2>';
+      
+      // 1. 資料表統計
+      html += '<div class="section">';
+      html += '<h3>📊 資料表統計</h3>';
+      html += '<table><tr><th>資料表</th><th>筆數</th><th>狀態</th></tr>';
+      
+      for (const [table, count] of Object.entries(results.tableCounts)) {
+        const status = count > 0 ? '<span class="success">✓ 有資料</span>' : '<span class="warning">⚠ 空表</span>';
+        html += `<tr><td>${table}</td><td>${count}</td><td>${status}</td></tr>`;
+      }
+      html += '</table></div>';
+      
+      // 2. 用戶資料
+      if (results.usersSample) {
+        html += '<div class="section">';
+        html += '<h3>👤 用戶資料範例</h3>';
+        html += '<p><strong>欄位數量:</strong> ' + results.usersFields.length + '</p>';
+        html += '<p><strong>欄位列表:</strong> ' + results.usersFields.join(', ') + '</p>';
+        html += '<table><tr><th>手機</th><th>暱稱</th><th>生日</th><th>生日類型</th></tr>';
+        results.usersSample.forEach(u => {
+          html += `<tr><td>${u.phone}</td><td>${u.nickname}</td><td>${u.birthday}</td><td>${u.birthdayType}</td></tr>`;
+        });
+        html += '</table></div>';
+      }
+      
+      // 3. 商品資料
+      if (results.productsSample) {
+        html += '<div class="section">';
+        html += '<h3>📦 商品資料範例</h3>';
+        html += '<p><strong>欄位數量:</strong> ' + results.productsFields.length + '</p>';
+        
+        if (results.productStats) {
+          html += '<p><strong>分類統計:</strong></p><ul>';
+          for (const [cat, count] of Object.entries(results.productStats.categories)) {
+            html += `<li>${cat}: ${count} 筆</li>`;
+          }
+          html += '</ul>';
+          
+          html += '<p><strong>卡盒統計:</strong></p><ul>';
+          html += `<li>is_box_preorder="true": ${results.productStats.boxCount.true} 筆</li>`;
+          html += `<li>is_box_preorder="false": ${results.productStats.boxCount.false} 筆</li>`;
+          html += `<li>其他: ${results.productStats.boxCount.other} 筆</li>`;
+          html += '</ul>';
+        }
+        
+        html += '<table><tr><th>商品名稱</th><th>分類</th><th>卡盒</th><th>總數</th><th>剩餘</th><th>截止時間</th></tr>';
+        results.productsSample.forEach(p => {
+          html += `<tr><td>${p.item_name}</td><td>${p.category}</td><td>${p.is_box_preorder} (${p.is_box_type})</td><td>${p.total_quantity}</td><td>${p.current_quantity}</td><td>${p.close_time || '無'}</td></tr>`;
+        });
+        html += '</table></div>';
+      }
+      
+      // 4. 訂單資料
+      if (results.ordersSample) {
+        html += '<div class="section">';
+        html += '<h3>📋 訂單資料範例</h3>';
+        html += '<p><strong>欄位數量:</strong> ' + results.ordersFields.length + '</p>';
+        html += '<p><strong>欄位列表:</strong> ' + results.ordersFields.join(', ') + '</p>';
+        
+        if (results.orderStats) {
+          html += '<p><strong>user_id 統計:</strong></p><ul>';
+          html += `<li>有 user_id: ${results.orderStats.hasUserId} 筆</li>`;
+          html += `<li>無 user_id: ${results.orderStats.noUserId} 筆</li>`;
+          html += `<li>總計: ${results.orderStats.total} 筆</li>`;
+          html += '</ul>';
+        }
+        
+        html += '<table><tr><th>手機</th><th>暱稱</th><th>商品</th><th>有user_id</th><th>已結清</th><th>已出貨</th></tr>';
+        results.ordersSample.forEach(o => {
+          const hasUserId = o.has_user_id ? '✓' : '✗';
+          html += `<tr><td>${o.phone}</td><td>${o.nickname}</td><td>${o.item_name}</td><td>${hasUserId}</td><td>${o.is_cleared}</td><td>${o.is_shipped}</td></tr>`;
+        });
+        html += '</table></div>';
+      }
+      
+      // 5. 測試用戶訂單
+      if (results.testUserOrders) {
+        html += '<div class="section">';
+        html += '<h3>🧪 測試用戶訂單 (0975313096)</h3>';
+        html += `<p><strong>訂單數量:</strong> ${results.testUserOrders.count} 筆</p>`;
+        
+        if (results.testUserOrders.sample && results.testUserOrders.sample.length > 0) {
+          html += '<table><tr><th>商品名稱</th><th>數量</th><th>訂單日期</th></tr>';
+          results.testUserOrders.sample.forEach(o => {
+            html += `<tr><td>${o.item_name}</td><td>${o.quantity}</td><td>${o.order_date}</td></tr>`;
+          });
+          html += '</table>';
+        } else {
+          html += '<p class="warning">⚠️ 沒有找到訂單</p>';
+        }
+        html += '</div>';
+      }
+      
+      // 完整 JSON
+      html += '<div class="section">';
+      html += '<h3>📄 完整 JSON 資料</h3>';
+      html += '<pre>' + JSON.stringify(results, null, 2) + '</pre>';
+      html += '</div>';
+      
+      resultDiv.innerHTML = html;
+    }
+    
+    function clearResult() {
+      document.getElementById('result').innerHTML = '';
+    }
+  </script>
+</body>
+</html>

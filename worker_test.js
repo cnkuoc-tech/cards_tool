@@ -1,10 +1,18 @@
 /**
  * Cloudflare Worker - Ning's Card Store 測試環境版本
  * ✅ 包含: 登入、訂單查詢、商品詳情、團拆、PSA 鑑定、付款通知
- * ⚠️ 測試環境 - 請更新 GAS_URL 為測試環境的 Google Apps Script URL
+ * ⚠️ 測試環境 - 使用 Supabase + Cloudflare Workers API
  */
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxU_5-Ent6tRov1vpHS9u1UD3CG_D2WMN4spZi4pTPl6KqrqYRP6B8Cj8wC7H6GKJOT/exec';  // ⚠️ 請填入測試環境的 GAS URL
+// Cloudflare Workers API URL
+// 🔧 請將此網址改為你的後端 API Worker URL（例如：https://supabase-api.你的帳號.workers.dev）
+const API_URL = 'https://supabase-api.cnkuoc-tech.workers.dev';
+
+// 本地開發用（取消註解以使用本地 API）
+// const API_URL = 'http://localhost:8787';
+
+// 備份：原 GAS URL（暫時保留）
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxU_5-Ent6tRov1vpHS9u1UD3CG_D2WMN4spZi4pTPl6KqrqYRP6B8Cj8wC7H6GKJOT/exec';
 
 const HTML_CONTENT = `<!DOCTYPE html>
 <html>
@@ -722,6 +730,9 @@ const HTML_CONTENT = `<!DOCTYPE html>
     <div id="breaksPage" style="display:none;">
       <div class="section-title">⚾️ 團拆紀錄</div>
       
+      <!-- 團拆金餘額 Banner -->
+      <div id="breakCreditBanner" style="display:none;"></div>
+      
       <!-- 搜尋框 -->
       <div style="margin-bottom:15px;">
         <input type="text" id="breakSearchInput" placeholder="🔍 搜尋團號、團名、品項..." oninput="searchBreaks()" style="width:100%;max-width:400px;padding:10px 15px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
@@ -746,6 +757,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         <div style="display:flex;gap:10px;">
           <button class="order-action-btn" onclick="selectAllBreaks()" style="background:#ff9800;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;">全選 (全部頁面)</button>
           <button class="order-action-btn" onclick="clearAllBreaksSelection()" style="background:white;color:#333;border:1px solid #ddd;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;">清除勾選</button>
+          <button id="useBreakCreditBtn" class="order-action-btn" onclick="useBreakCreditForSelected()" style="display:none;background:linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;box-shadow:0 2px 4px rgba(156,39,176,0.3);">💰 使用團拆金</button>
           <button id="breakCheckoutBtn" class="order-action-btn" onclick="openBreakPaymentMethod()" style="display:none;background:#28a745;color:white;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:bold;">💳 我要結帳</button>
         </div>
         <div id="breakTotalBalance" style="background:linear-gradient(135deg, #1e3a5f 0%, #2c5f7c 100%);color:white;padding:10px 20px;border-radius:8px;font-size:15px;font-weight:bold;">
@@ -1119,10 +1131,10 @@ const HTML_CONTENT = `<!DOCTYPE html>
       <div style="max-width:800px;margin:0 auto;padding:20px;line-height:1.8;">
         
         <div style="background:linear-gradient(135deg, var(--navy), #2e4a7c);color:white;padding:30px;border-radius:12px;margin-bottom:30px;text-align:center;box-shadow:0 4px 15px rgba(0,0,0,0.1);">
-          <h2 style="font-size:28px;margin-bottom:15px;">⚾️ 關於我們：投寧所好，以卡求緣</h2>
+          <h2 style="font-size:28px;margin-bottom:15px;">⚾️ 關於我們：投寧所好，以卡球緣</h2>
           <p style="font-size:16px;line-height:1.8;">
             歡迎來到 <strong>Ning's Card</strong>！我是站長 Ning。<br>
-            本身是投手出身的我，將工作室取名為<strong>「投寧所好求緣卡工作室」</strong>，<br>
+            本身是投手出身的我，將工作室取名為<strong>「投寧所好球緣卡工作室」</strong>，<br>
             這裡面包含了兩個我們對收藏的核心理念：
           </p>
         </div>
@@ -1634,6 +1646,12 @@ const HTML_CONTENT = `<!DOCTYPE html>
     </div>
 
     <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2); text-align: center;">
+      <p style="font-size: 14px; color: rgba(255,255,255,0.9); margin-bottom: 8px;">
+        ⚾️ 投寧所好球緣卡工作室
+      </p>
+      <p style="font-size: 13px; color: rgba(255,255,255,0.7); margin-bottom: 15px;">
+        統一編號: 00621665
+      </p>
       <a href="javascript:void(0)" onclick="openModal('privacy')" style="color: #ffd700; text-decoration: underline; font-size: 14px;">
         🔒 隱私權與個資聲明
       </a>
@@ -1717,7 +1735,8 @@ const HTML_CONTENT = `<!DOCTYPE html>
     // ===== API 調用 =====
     async function callAPI(action, params = {}) {
       try {
-        const response = await fetch('/api', {
+        // 使用新的 Supabase API
+        const response = await fetch(API_URL, {
           method: 'POST',
           body: JSON.stringify({ action, ...params }),
           headers: { 'Content-Type': 'application/json' }
@@ -1870,14 +1889,216 @@ const HTML_CONTENT = `<!DOCTYPE html>
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    function openModal(id) {
+    // 確保 modal 函數在全域可用
+    window.openModal = function openModal(id) {
       const el = document.getElementById(id + 'Modal');
       if (el) el.style.display = 'flex';
-    }
+    };
 
-    function closeModal(id) {
+    window.closeModal = function closeModal(id) {
       const el = document.getElementById(id + 'Modal');
       if (el) el.style.display = 'none';
+    };
+
+    // ===== 團拆金選擇對話框 =====
+    function showBreakCreditDialog(availableCredit, totalAmount, breakIds) {
+      return new Promise((resolve) => {
+        const maxUsable = Math.min(availableCredit, totalAmount);
+        
+        // 建立對話框容器
+        const dialog = document.createElement('div');
+        dialog.id = 'breakCreditDialog';
+        dialog.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:10000;';
+        
+        const content = document.createElement('div');
+        content.style.cssText = 'background:white;border-radius:12px;padding:30px;max-width:400px;width:90%;';
+        
+        // 標題
+        const title = document.createElement('h3');
+        title.textContent = '💰 使用團拆金';
+        title.style.cssText = 'color:#1e3a5f;margin-bottom:20px;text-align:center;';
+        content.appendChild(title);
+        
+        // 金額資訊區
+        const infoBox = document.createElement('div');
+        infoBox.style.cssText = 'background:#f0f4f8;padding:15px;border-radius:8px;margin-bottom:20px;border-left:4px solid #2c5f7c;';
+        infoBox.innerHTML = 
+          '<div style="display:flex;justify-content:space-between;margin-bottom:10px;">' +
+            '<span style="color:#666;">可用團拆金:</span>' +
+            '<span style="font-weight:bold;color:#2c5f7c;">NT$ ' + availableCredit.toLocaleString() + '</span>' +
+          '</div>' +
+          '<div style="display:flex;justify-content:space-between;margin-bottom:10px;">' +
+            '<span style="color:#666;">尾款金額:</span>' +
+            '<span style="font-weight:bold;color:#1e3a5f;">NT$ ' + totalAmount.toLocaleString() + '</span>' +
+          '</div>' +
+          '<div style="display:flex;justify-content:space-between;">' +
+            '<span style="color:#666;">最多可用:</span>' +
+            '<span style="font-weight:bold;color:#ff9800;">NT$ ' + maxUsable.toLocaleString() + '</span>' +
+          '</div>';
+        content.appendChild(infoBox);
+        
+        // 輸入區
+        const inputBox = document.createElement('div');
+        inputBox.style.cssText = 'margin-bottom:20px;';
+        
+        const label = document.createElement('label');
+        label.textContent = '使用金額:';
+        label.style.cssText = 'display:block;margin-bottom:8px;color:#333;font-weight:500;';
+        inputBox.appendChild(label);
+        
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.id = 'creditAmountInput';
+        input.value = maxUsable;
+        input.min = 0;
+        input.max = maxUsable;
+        input.style.cssText = 'width:100%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:16px;';
+        input.oninput = function() { window.updateCreditPreview(); };
+        inputBox.appendChild(input);
+        
+        // 快捷按鈕
+        const btnGroup = document.createElement('div');
+        btnGroup.style.cssText = 'margin-top:8px;display:flex;gap:5px;flex-wrap:wrap;';
+        
+        const btn0 = document.createElement('button');
+        btn0.textContent = '不使用';
+        btn0.style.cssText = 'padding:6px 12px;border:1px solid #ddd;background:white;border-radius:4px;cursor:pointer;font-size:13px;';
+        btn0.onclick = function() { window.setCreditAmount(0); };
+        btnGroup.appendChild(btn0);
+        
+        const btn50 = document.createElement('button');
+        btn50.textContent = '一半';
+        btn50.style.cssText = 'padding:6px 12px;border:1px solid #ddd;background:white;border-radius:4px;cursor:pointer;font-size:13px;';
+        btn50.onclick = function() { window.setCreditAmount(Math.floor(maxUsable / 2)); };
+        btnGroup.appendChild(btn50);
+        
+        const btnAll = document.createElement('button');
+        btnAll.textContent = '全部';
+        btnAll.style.cssText = 'padding:6px 12px;border:1px solid #ddd;background:white;border-radius:4px;cursor:pointer;font-size:13px;';
+        btnAll.onclick = function() { window.setCreditAmount(maxUsable); };
+        btnGroup.appendChild(btnAll);
+        
+        inputBox.appendChild(btnGroup);
+        content.appendChild(inputBox);
+        
+        // 預覽區
+        const preview = document.createElement('div');
+        preview.id = 'creditPreview';
+        preview.style.cssText = 'background:#e8f1f8;padding:12px;border-radius:8px;margin-bottom:20px;text-align:center;border:2px solid #2c5f7c;';
+        preview.innerHTML = 
+          '<div style="font-size:14px;color:#666;margin-bottom:4px;">使用後尾款</div>' +
+          '<div style="font-size:24px;font-weight:bold;color:#1e3a5f;">NT$ ' + (totalAmount - maxUsable).toLocaleString() + '</div>';
+        content.appendChild(preview);
+        
+        // 按鈕區
+        const actionBtns = document.createElement('div');
+        actionBtns.style.cssText = 'display:flex;gap:10px;';
+        
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = '取消';
+        cancelBtn.style.cssText = 'flex:1;padding:12px;background:#6c757d;color:white;border:none;border-radius:8px;cursor:pointer;font-size:16px;';
+        cancelBtn.onclick = function() { window.cancelCreditDialog(); };
+        actionBtns.appendChild(cancelBtn);
+        
+        const confirmBtn = document.createElement('button');
+        confirmBtn.textContent = '確認使用';
+        confirmBtn.style.cssText = 'flex:1;padding:12px;background:#1e3a5f;color:white;border:none;border-radius:8px;cursor:pointer;font-size:16px;';
+        confirmBtn.onclick = function() { window.confirmCreditUse(); };
+        actionBtns.appendChild(confirmBtn);
+        
+        content.appendChild(actionBtns);
+        dialog.appendChild(content);
+        document.body.appendChild(dialog);
+        
+        window.breakCreditResolve = resolve;
+        window.breakCreditMaxUsable = maxUsable;
+        window.breakCreditTotalAmount = totalAmount;
+      });
+    }
+    
+    window.updateCreditPreview = function updateCreditPreview() {
+      const input = document.getElementById('creditAmountInput');
+      const preview = document.getElementById('creditPreview');
+      const amount = Number(input.value) || 0;
+      const remaining = window.breakCreditTotalAmount - amount;
+      
+      if (preview) {
+        preview.innerHTML = 
+          '<div style="font-size:14px;color:#666;margin-bottom:4px;">使用後尾款</div>' +
+          '<div style="font-size:24px;font-weight:bold;color:#1e3a5f;">NT$ ' + remaining.toLocaleString() + '</div>';
+      }
+    };
+    
+    window.setCreditAmount = function setCreditAmount(amount) {
+      const input = document.getElementById('creditAmountInput');
+      if (input) {
+        input.value = amount;
+        window.updateCreditPreview();
+      }
+    };
+    
+    window.cancelCreditDialog = function cancelCreditDialog() {
+      const dialog = document.getElementById('breakCreditDialog');
+      if (dialog) dialog.remove();
+      if (window.breakCreditResolve) {
+        window.breakCreditResolve(null);
+      }
+    };
+    
+    window.confirmCreditUse = function confirmCreditUse() {
+      const input = document.getElementById('creditAmountInput');
+      const amount = Number(input.value) || 0;
+      const dialog = document.getElementById('breakCreditDialog');
+      if (dialog) dialog.remove();
+      if (window.breakCreditResolve) {
+        window.breakCreditResolve(amount);
+      }
+    };
+
+    // ===== 團拆金管理功能 =====
+    async function showBreakCreditManagement() {
+      showLoading('載入團拆金資訊...');
+      const creditInfo = await callAPI('getBreakCredit', { nickname: user.nickname });
+      hideLoading();
+      
+      if (!creditInfo || !creditInfo.success) {
+        alert('無法載入團拆金資訊: ' + (creditInfo ? creditInfo.message : '未知錯誤'));
+        return;
+      }
+      
+      const totalCredit = creditInfo.credit || 0;
+      
+      // 建立對話框
+      const dialog = document.createElement('div');
+      dialog.id = 'creditManagementDialog';
+      dialog.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:10000;padding:20px;';
+      
+      const content = document.createElement('div');
+      content.style.cssText = 'background:white;border-radius:12px;padding:30px;max-width:400px;width:100%;';
+      
+      // 標題
+      const title = document.createElement('h3');
+      title.textContent = '💰 團拆金';
+      title.style.cssText = 'color:#1e3a5f;margin-bottom:20px;text-align:center;';
+      content.appendChild(title);
+      
+      // 總額顯示
+      const totalBox = document.createElement('div');
+      totalBox.style.cssText = 'background:linear-gradient(135deg, #1e3a5f 0%, #2c5f7c 100%);color:white;padding:30px;border-radius:12px;text-align:center;box-shadow:0 4px 12px rgba(30,58,95,0.3);';
+      totalBox.innerHTML = 
+        '<div style="font-size:14px;opacity:0.9;margin-bottom:8px;">目前可用金額</div>' +
+        '<div style="font-size:42px;font-weight:bold;">NT$ ' + totalCredit.toLocaleString() + '</div>';
+      content.appendChild(totalBox);
+      
+      // 關閉按鈕
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = '關閉';
+      closeBtn.style.cssText = 'width:100%;padding:12px;background:#1e3a5f;color:white;border:none;border-radius:8px;cursor:pointer;font-size:16px;margin-top:20px;';
+      closeBtn.onclick = function() { dialog.remove(); };
+      content.appendChild(closeBtn);
+      
+      dialog.appendChild(content);
+      document.body.appendChild(dialog);
     }
 
     // ===== 商品狀態過濾 =====
@@ -3338,7 +3559,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         // 摺疊圖示
         html += '<span id="' + cardId + '-icon" style="margin-right:10px;font-size:18px;transition:transform 0.3s;">\\u25bc</span>';
         
-        // 🌟 修正狀態顯示邏輯:已結清 > 付款確認中 > 已通知 > 可勾選
+        // 🌟 修正狀態顯示邏輯:已結清 > 付款確認中 > 已通知 > 已付訂金(可勾選) > 可勾選
         if (isCleared) {
           html += '<span style="font-weight:600;color:white;">' + (o.item || '-') + '</span>';
         } else if (isPendingPayment) {
@@ -3651,7 +3872,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
       
       if (type === 'bank') {
         titleEl.textContent = '🏦 匯款資訊';
-        instructions.innerHTML = '<strong>匯款帳號:</strong> (807) 20301800269695<br><small style="color:#666;margin-top:8px;display:block;">請匯款後填寫以下資訊,以便我們確認您的付款</small>';
+        instructions.innerHTML = '<strong>匯款帳號:</strong> (807)18601800807852<br><small style="color:#666;margin-top:8px;display:block;">請匯款後填寫以下資訊,以便我們確認您的付款</small>';
         fieldLabel.textContent = '帳號後五碼 *';
         fieldInput.placeholder = '請輸入12345';
         fieldInput.maxLength = 5;
@@ -3847,8 +4068,15 @@ const HTML_CONTENT = `<!DOCTYPE html>
             
             if (updateResult && updateResult.success) {
               console.log('✅ ' + displayType + '狀態已更新為「付款確認中」，共更新', updateResult.updatedCount, '筆');
+              
+              // ⚠️ 檢查是否完全失敗(0筆更新成功)
+              if (updateResult.updatedCount === 0 && updateResult.totalRequested > 0) {
+                alert('⚠️ 付款已提交,但狀態更新異常,請聯繫客服確認訂單狀態。');
+              }
             } else {
               console.error('❌ 更新失敗:', updateResult ? updateResult.message : '無回應');
+              // 更新失敗時也提示客戶
+              alert('⚠️ 付款已提交,但系統無法自動更新狀態,請聯繫客服確認。');
             }
             
             // 重新載入訂單/團拆以顯示「付款確認中」狀態
@@ -4059,6 +4287,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         var itemNames = [];
         var orderDetails = [];
         var paymentType = ''; // 'order' or 'break'
+        var breakIds = []; // 🔑 初始化 breakIds,避免訂單付款時 undefined
         
         if (orderChecked.length > 0) {
           // 訂單付款
@@ -4100,16 +4329,43 @@ const HTML_CONTENT = `<!DOCTYPE html>
         } else if (breakChecked.length > 0) {
           // 團拆付款
           paymentType = 'break';
-          var breakIds = [];
           
           for (var i = 0; i < breakChecked.length; i++) {
             var cb = breakChecked[i];
-            var balance = Number(cb.getAttribute("data-balance"));
             var idx = Number(cb.getAttribute("data-idx"));
             var breakId = cb.getAttribute("data-id");
             var breakItem = user.groupBreaks[idx];
             
-            if (balance > 0 && breakItem) {
+            if (!breakItem) continue;
+            
+            // 🌟 從 breakItem 計算實際尾款,需扣除已使用的團拆金
+            var totalFee = Number(breakItem.totalFee || breakItem['總團費'] || 0);
+            var paid = Number(breakItem.paid || breakItem['已付金額'] || 0);
+            
+            // 計算此團拆已使用的團拆金
+            var usedCreditForThisBreak = 0;
+            if (window.breakCreditHistory && window.breakCreditHistory.length > 0) {
+              window.breakCreditHistory.forEach(function(credit) {
+                if (credit.usedBreak && credit.usedBreak.includes(breakId)) {
+                  usedCreditForThisBreak += credit.usedAmount || 0;
+                }
+              });
+            }
+            
+            // 實際尾款 = 總團費 - 團拆金 - 實付金額
+            var balance = totalFee - usedCreditForThisBreak - paid;
+            
+            console.log('團拆付款 debug:', {
+              breakId: breakId,
+              idx: idx,
+              totalFee: totalFee,
+              paid: paid,
+              usedCreditForThisBreak: usedCreditForThisBreak,
+              balance: balance,
+              breakItem: breakItem
+            });
+            
+            if (balance > 0) {
               totalAmount += balance;
               breakIds.push(breakId);
               
@@ -4149,7 +4405,8 @@ const HTML_CONTENT = `<!DOCTYPE html>
           amount: totalAmount,
           itemName: itemNames.join("|"),
           orderDetails: orderDetails,
-          paymentType: paymentType  // 🌟 告訴後端是訂單還是團拆
+          paymentType: paymentType,  // 🌟 告訴後端是訂單還是團拆
+          breakIds: breakIds.join(',')  // 🌟 記錄團拆編號
         };
         
         var res = await callAPI("createEcpayPayment", payload);
@@ -4225,11 +4482,38 @@ const HTML_CONTENT = `<!DOCTYPE html>
       displayBreaks();
     }
     
-    function displayBreaks() {
+    async function displayBreaks() {
       const breaks = user.groupBreaks || [];
       const list = document.getElementById('breaksList');
       
       console.log('顯示團拆資料:', breaks);
+      
+      // 🌟 查詢並顯示團拆金餘額
+      if (user && user.nickname) {
+        var creditInfo = await callAPI('getBreakCredit', { nickname: user.nickname });
+        var creditBanner = document.getElementById('breakCreditBanner');
+        
+        // 🌟 儲存團拆金歷史到全域變數,供卡片顯示使用
+        window.breakCreditHistory = creditInfo && creditInfo.success ? creditInfo.history : [];
+        
+        if (creditBanner) {
+          if (creditInfo && creditInfo.success && creditInfo.credit > 0) {
+            // 只在有可用團拆金時顯示
+            creditBanner.innerHTML = 
+              '<div style="background:linear-gradient(135deg, #1e3a5f 0%, #2c5f7c 100%);color:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 4px 12px rgba(30,58,95,0.3);">' +
+                '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+                  '<div>' +
+                    '<div style="font-size:14px;opacity:0.9;margin-bottom:4px;">💰 可用團拆金</div>' +
+                    '<div style="font-size:28px;font-weight:bold;">NT$ ' + creditInfo.credit.toLocaleString() + '</div>' +
+                  '</div>' +
+                '</div>' +
+              '</div>';
+            creditBanner.style.display = 'block';
+          } else {
+            creditBanner.style.display = 'none';
+          }
+        }
+      }
 
       if (breaks.length === 0) {
         list.innerHTML = '<div style="text-align:center;padding:60px 20px;"><p style="color:#999;font-size:18px;margin-bottom:10px;">📭</p><p style="color:#999;font-size:16px;">尚無團拆紀錄</p></div>';
@@ -4291,10 +4575,26 @@ const HTML_CONTENT = `<!DOCTYPE html>
         
         var totalFee = Number(b.totalFee || b['總團費'] || 0);
         var paid = Number(b.paid || b['已付金額'] || 0);
-        var balance = Number(b.balance || (totalFee - paid));
+        
+        // 🌟 計算此團拆使用的團拆金
+        var breakId = (b.id || b['團拆編號'] || '-');
+        var usedCreditForThisBreak = 0;
+        if (window.breakCreditHistory && window.breakCreditHistory.length > 0) {
+          window.breakCreditHistory.forEach(function(credit) {
+            if (credit.usedBreak && credit.usedBreak.includes(breakId)) {
+              usedCreditForThisBreak += credit.usedAmount || 0;
+            }
+          });
+        }
+        
+        // 🌟 實際尾款 = 總團費 - 團拆金 - 實付金額
+        var balance = totalFee - usedCreditForThisBreak - paid;
+        if (balance < 0) balance = 0;
+        
         var statusText = b.status || '';
         var isPendingPayment = statusText === '付款確認中';
         var isCleared = (balance <= 0) || (statusText === '已結清');
+        var isDepositPaid = statusText === '已付訂金';
         var isNotified = b.paymentNotified === true;
         var category = b.category || b['種類'] || '棒球';
         var categoryEmoji = category === '棒球' ? '⚾' : category === '籃球' ? '🏀' : '🎯';
@@ -4313,7 +4613,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         // 折疊圖示
         html += '<span id="' + cardId + '-icon" style="margin-right:10px;font-size:18px;transition:transform 0.3s;">▼</span>';
         
-        // 🌟 顯示邏輯: 已結清 > 付款確認中 > 已通知 > 可勾選
+        // 🌟 顯示邏輯: 已結清 > 付款確認中 > 已通知 > 已付訂金(可勾選) > 可勾選
         if (isCleared) {
           html += '<div style="display:flex;flex-direction:column;gap:2px;">';
           html += '<span style="font-weight:600;color:white;">' + breakId + '</span>';
@@ -4380,10 +4680,31 @@ const HTML_CONTENT = `<!DOCTYPE html>
         html += '<span class="order-info-value highlight">NT$ ' + totalFee.toLocaleString() + '</span>';
         html += '</div>';
         
+        // 🌟 顯示此團拆使用的團拆金
+        var usedCreditForThisBreak = 0;
+        if (window.breakCreditHistory && window.breakCreditHistory.length > 0) {
+          window.breakCreditHistory.forEach(function(credit) {
+            if (credit.usedBreak && credit.usedBreak.includes(breakId)) {
+              usedCreditForThisBreak += credit.usedAmount || 0;
+            }
+          });
+        }
+        
+        if (usedCreditForThisBreak > 0) {
+          html += '<div class="order-info-item">';
+          html += '<span class="order-info-label">💰 使用團拆金</span>';
+          html += '<span class="order-info-value" style="color:#9c27b0;font-weight:bold;">- NT$ ' + usedCreditForThisBreak.toLocaleString() + '</span>';
+          html += '</div>';
+        }
+        
         html += '<div class="order-info-item">';
-        html += '<span class="order-info-label">已付金額</span>';
+        html += '<span class="order-info-label">實付金額</span>';
         html += '<span class="order-info-value" style="color:#28a745;">NT$ ' + paid.toLocaleString() + '</span>';
         html += '</div>';
+        
+        // 🌟 計算實際尾款 = 總團費 - 團拆金 - 實付金額
+        var actualBalance = totalFee - usedCreditForThisBreak - paid;
+        if (actualBalance < 0) actualBalance = 0;
         
         html += '<div class="order-info-item">';
         html += '<span class="order-info-label">是否已拆</span>';
@@ -4508,18 +4829,112 @@ const HTML_CONTENT = `<!DOCTYPE html>
       });
 
       const checkoutBtn = document.getElementById('breakCheckoutBtn');
+      const useCreditBtn = document.getElementById('useBreakCreditBtn');
       const totalDisplay = document.getElementById('totalBreakBalanceAmount');
       
       if (count > 0 && total > 0) {
         checkoutBtn.style.display = 'inline-block';
+        useCreditBtn.style.display = 'inline-block';
       } else {
         checkoutBtn.style.display = 'none';
+        useCreditBtn.style.display = 'none';
       }
       
       totalDisplay.textContent = 'NT$ ' + total.toLocaleString();
     }
 
-    function openBreakPaymentMethod() {
+    // 🌟 獨立的使用團拆金功能
+    async function useBreakCreditForSelected() {
+      const checked = Array.from(document.querySelectorAll('.break-checkbox:checked'));
+      if (checked.length === 0) {
+        alert('請先勾選要使用團拆金的團拆項目');
+        return;
+      }
+      
+      if (checked.length > 1) {
+        alert('使用團拆金時一次只能選擇一團，請重新勾選');
+        return;
+      }
+      
+      let total = 0;
+      const breakIds = [];
+      
+      // 計算選中項目的尾款總額
+      checked.forEach(cb => {
+        const idx = Number(cb.getAttribute('data-idx'));
+        const breakItem = user.groupBreaks[idx];
+        const breakId = cb.getAttribute('data-id');
+        
+        if (breakItem) {
+          const totalFee = Number(breakItem.totalFee || breakItem['總團費'] || 0);
+          const paid = Number(breakItem.paid || breakItem['已付金額'] || 0);
+          
+          // 計算此團拆已使用的團拆金
+          let usedCreditForThisBreak = 0;
+          if (window.breakCreditHistory && window.breakCreditHistory.length > 0) {
+            window.breakCreditHistory.forEach(function(credit) {
+              if (credit.usedBreak && credit.usedBreak.includes(breakId)) {
+                usedCreditForThisBreak += credit.usedAmount || 0;
+              }
+            });
+          }
+          
+          const balance = totalFee - usedCreditForThisBreak - paid;
+          
+          if (balance > 0) {
+            total += balance;
+            breakIds.push(breakId);
+          }
+        }
+      });
+      
+      if (total <= 0) {
+        alert('所選項目已付清,無需使用團拆金');
+        return;
+      }
+      
+      // 檢查可用團拆金
+      showLoading('檢查團拆金餘額...');
+      const creditInfo = await callAPI('getBreakCredit', { nickname: user.nickname });
+      hideLoading();
+      
+      if (!creditInfo || !creditInfo.success) {
+        alert('無法載入團拆金資訊');
+        return;
+      }
+      
+      if (creditInfo.credit <= 0) {
+        alert('您目前沒有可用的團拆金');
+        return;
+      }
+      
+      // 顯示使用團拆金對話框
+      const creditChoice = await showBreakCreditDialog(creditInfo.credit, total, breakIds);
+      
+      if (creditChoice === null || creditChoice === 0) {
+        return; // 用戶取消或選擇不使用
+      }
+      
+      // 呼叫後端使用團拆金
+      showLoading('使用團拆金中...');
+      const useResult = await callAPI('useBreakCredit', {
+        nickname: user.nickname,
+        amount: creditChoice,
+        breakIds: breakIds.join('||')
+      });
+      hideLoading();
+      
+      if (useResult && useResult.success) {
+        alert('成功使用 NT$' + creditChoice.toLocaleString() + ' 團拆金!已折抵選中的團拆項目');
+        
+        // 重新載入團拆紀錄以更新顯示
+        displayBreaks();
+      } else {
+        alert('使用團拆金失敗: ' + (useResult ? useResult.message : '未知錯誤'));
+      }
+    }
+
+    async function openBreakPaymentMethod() {
       const checked = Array.from(document.querySelectorAll('.break-checkbox:checked'));
       if (checked.length === 0) {
         alert('請先勾選要付款的團拆項目');
@@ -4527,9 +4942,38 @@ const HTML_CONTENT = `<!DOCTYPE html>
       }
       
       let total = 0;
+      let count = 0;
+      const breakIds = [];
+      
+      // 🌟 從 user.groupBreaks 計算實際尾款
       checked.forEach(cb => {
-        const balance = Number(cb.getAttribute('data-balance'));
-        if (balance > 0) total += balance;
+        const idx = Number(cb.getAttribute('data-idx'));
+        const breakItem = user.groupBreaks[idx];
+        const breakId = cb.getAttribute('data-id');
+        
+        if (breakItem) {
+          const totalFee = Number(breakItem.totalFee || breakItem['總團費'] || 0);
+          const paid = Number(breakItem.paid || breakItem['已付金額'] || 0);
+          
+          // 🌟 計算此團拆使用的團拆金
+          let usedCreditForThisBreak = 0;
+          if (window.breakCreditHistory && window.breakCreditHistory.length > 0) {
+            window.breakCreditHistory.forEach(function(credit) {
+              if (credit.usedBreak && credit.usedBreak.includes(breakId)) {
+                usedCreditForThisBreak += credit.usedAmount || 0;
+              }
+            });
+          }
+          
+          // 🌟 實際尾款 = 總團費 - 團拆金 - 實付金額
+          const balance = totalFee - usedCreditForThisBreak - paid;
+          
+          if (balance > 0) {
+            total += balance;
+            count++;
+            breakIds.push(breakId);
+          }
+        }
       });
       
       if (total <= 0) {
@@ -4537,8 +4981,12 @@ const HTML_CONTENT = `<!DOCTYPE html>
         return;
       }
       
+      // 更新付款方式選擇頁面的統計
+      document.getElementById('selectedCount').textContent = count;
+      document.getElementById('selectedTotal').textContent = 'NT$ ' + total.toLocaleString();
+      
       selectedPaymentType = '';
-      document.getElementById('paymentMethodModal').style.display = 'flex';
+      openModal('paymentMethod');
     }
 
     function submitBreakPayment() {
