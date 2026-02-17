@@ -626,8 +626,25 @@
                 <option value="混合">混合</option>
               </select>
 
-              <div id="manualItemsList"></div>
-              <button class="btn-submit" style="background: #3498db; margin-bottom: 15px;" onclick="addManualItem()">➕ 新增品項</button>
+              <h3 style="margin-top: 20px; margin-bottom: 15px;">訂購人清單</h3>
+              <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+                  <thead>
+                    <tr style="background: #f8f9fa;">
+                      <th style="padding: 10px; text-align: left; border: 1px solid #e1e8ed; font-weight: 600;">訂購人</th>
+                      <th style="padding: 10px; text-align: left; border: 1px solid #e1e8ed; font-weight: 600;">單注金額</th>
+                      <th style="padding: 10px; text-align: left; border: 1px solid #e1e8ed; font-weight: 600;">注數</th>
+                      <th style="padding: 10px; text-align: left; border: 1px solid #e1e8ed; font-weight: 600;">優惠說明</th>
+                      <th style="padding: 10px; text-align: center; border: 1px solid #e1e8ed; font-weight: 600;">合計金額</th>
+                      <th style="padding: 10px; text-align: center; border: 1px solid #e1e8ed; font-weight: 600;">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="manualItemsList">
+                  </tbody>
+                </table>
+              </div>
+
+              <button class="btn-submit" style="background: #3498db; margin-bottom: 15px;" onclick="addManualTableItem()">➕ 新增一列</button>
             </div>
           </div>
 
@@ -1704,49 +1721,140 @@
       const mode = document.getElementById('inputMode').value;
       document.getElementById('pasteMode').style.display = mode === 'paste' ? 'block' : 'none';
       document.getElementById('manualMode').style.display = mode === 'manual' ? 'block' : 'none';
+      
+      // 在切換到手動模式時初始化表格（如果還沒有）
+      if (mode === 'manual' && document.querySelectorAll('#manualItemsList tr').length === 0) {
+        addManualTableItem();
+      }
+    }
+
+    function addManualTableItem() {
+      manualItemCount++;
+      const tbody = document.getElementById('manualItemsList');
+      const row = tbody.insertRow();
+      row.id = `manual-item-${manualItemCount}`;
+      
+      row.innerHTML = `
+        <td style="padding: 10px; border: 1px solid #e1e8ed;">
+          <input type="text" class="manual-buyer" placeholder="例: 韋恩" style="width: 100%; padding: 8px; border: 1px solid #e1e8ed; border-radius: 4px; font-size: 14px;">
+        </td>
+        <td style="padding: 10px; border: 1px solid #e1e8ed;">
+          <input type="number" class="manual-price" placeholder="2100" min="0" style="width: 100%; padding: 8px; border: 1px solid #e1e8ed; border-radius: 4px; font-size: 14px;">
+        </td>
+        <td style="padding: 10px; border: 1px solid #e1e8ed;">
+          <input type="number" class="manual-quantity" value="1" min="1" style="width: 100%; padding: 8px; border: 1px solid #e1e8ed; border-radius: 4px; font-size: 14px;" onchange="updateManualRowTotal(${manualItemCount})">
+        </td>
+        <td style="padding: 10px; border: 1px solid #e1e8ed;">
+          <input type="text" class="manual-discount" placeholder="例: 買2送1、滿10注95折" style="width: 100%; padding: 8px; border: 1px solid #e1e8ed; border-radius: 4px; font-size: 14px;">
+        </td>
+        <td style="padding: 10px; border: 1px solid #e1e8ed; text-align: center; font-weight: 600;" class="manual-total">0</td>
+        <td style="padding: 10px; border: 1px solid #e1e8ed; text-align: center;">
+          <button type="button" onclick="removeManualTableItem(${manualItemCount})" style="background: #dc3545; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">🗑️</button>
+        </td>
+      `;
+    }
+
+    function updateManualRowTotal(id) {
+      const row = document.getElementById(`manual-item-${id}`);
+      if (!row) return;
+      
+      const priceInput = row.querySelector('.manual-price');
+      const quantityInput = row.querySelector('.manual-quantity');
+      const totalCell = row.querySelector('.manual-total');
+      
+      const price = parseFloat(priceInput.value) || 0;
+      const quantity = parseInt(quantityInput.value) || 1;
+      const total = price * quantity;
+      
+      totalCell.textContent = total.toLocaleString();
+    }
+
+    function removeManualTableItem(id) {
+      const row = document.getElementById(`manual-item-${id}`);
+      if (row) row.remove();
+    }
+
+    function getManualTableData() {
+      const rows = document.querySelectorAll('#manualItemsList tr');
+      const items = [];
+      
+      rows.forEach(row => {
+        const buyer = row.querySelector('.manual-buyer').value.trim();
+        const price = parseFloat(row.querySelector('.manual-price').value) || 0;
+        const quantity = parseInt(row.querySelector('.manual-quantity').value) || 1;
+        const discount = row.querySelector('.manual-discount').value.trim();
+        
+        if (buyer && price > 0) {
+          items.push({
+            buyer,
+            pricePerSlot: price,
+            quantity,
+            discount,
+            totalPrice: price * quantity
+          });
+        }
+      });
+      
+      return items;
     }
 
     function addManualItem() {
-      manualItemCount++;
-      const container = document.getElementById('manualItemsList');
-      const itemDiv = document.createElement('div');
-      itemDiv.style.cssText = 'background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 10px; display: grid; grid-template-columns: 2fr 1fr auto; gap: 10px; align-items: end;';
-      itemDiv.id = `manual-item-${manualItemCount}`;
-      itemDiv.innerHTML = `
-        <div>
-          <label style="margin-bottom: 5px; display: block;">品項名稱</label>
-          <input type="text" class="manual-item-name" placeholder="例: 隨機-士頓大全人" style="width: 100%;">
-        </div>
-        <div>
-          <label style="margin-bottom: 5px; display: block;">金額 (NT$)</label>
-          <input type="number" class="manual-item-price" placeholder="1200" style="width: 100%;">
-        </div>
-        <button type="button" onclick="removeManualItem(${manualItemCount})" style="background: #dc3545; color: white; border: none; padding: 12px 15px; border-radius: 6px; cursor: pointer;">🗑️</button>
-      `;
-      container.appendChild(itemDiv);
+      addManualTableItem();
     }
 
     function removeManualItem(id) {
-      const item = document.getElementById(`manual-item-${id}`);
-      if (item) item.remove();
+      removeManualTableItem(id);
     }
 
-    async function parseAndPreview() {
-      const orderText = document.getElementById('orderText').value.trim();
-      const format = document.getElementById('pasteFormat').value;
 
-      if (!orderText) {
-        alert('請輸入訂單文字');
-        return;
-      }
+    async function parseAndPreview() {
+      const mode = document.getElementById('inputMode').value;
+      let breaksData = [];
 
       try {
-        let breaksData = [];
-        
-        if (format === 'random') {
-          breaksData = parseRandomFormat(orderText);
-        } else if (format === 'pyt') {
-          breaksData = parsePYTFormat(orderText);
+        if (mode === 'paste') {
+          const orderText = document.getElementById('orderText').value.trim();
+          const format = document.getElementById('pasteFormat').value;
+
+          if (!orderText) {
+            alert('請輸入訂單文字');
+            return;
+          }
+
+          if (format === 'random') {
+            breaksData = parseRandomFormat(orderText);
+          } else if (format === 'pyt') {
+            breaksData = parsePYTFormat(orderText);
+          }
+        } else {
+          // 手動模式
+          const breakNumber = document.getElementById('manualBreakNumber').value.trim();
+          const category = document.getElementById('manualCategory').value;
+          const breakName = document.getElementById('manualBreakName').value.trim();
+          const breakType = document.getElementById('manualBreakType').value;
+
+          if (!breakNumber || !breakName) {
+            alert('請填寫團拆編號和團名');
+            return;
+          }
+
+          const items = getManualTableData();
+          if (items.length === 0) {
+            alert('請至少新增一個訂購人');
+            return;
+          }
+
+          // 為每個訂購人生成一筆團拆記錄
+          breaksData = items.map(item => ({
+            buyer: item.buyer,
+            breakNumber: breakNumber,
+            category: category,
+            breakName: breakName,
+            breakType: breakType,
+            itemName: `${item.quantity}柱${item.discount ? '(' + item.discount + ')' : ''}`,
+            totalPrice: item.totalPrice,
+            discount: item.discount || ''
+          }));
         }
 
         if (breaksData.length === 0) {
