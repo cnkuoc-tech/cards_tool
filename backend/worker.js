@@ -187,12 +187,18 @@ async function handleAPI(request, env) {
     
     // 📊 記錄所有 action
     console.log('[API] 收到 action:', action);
+    console.log('[API] 完整 body:', JSON.stringify(body).substring(0, 200));
+    
     if (action === 'createEcpayPayment') {
       console.log('[API] ⭐ createEcpayPayment 已偵測！參數:', {
         phone: body.phone,
         totalAmount: body.totalAmount,
         itemName: body.itemName
       });
+    }
+    
+    if (action === 'addBreaksBatch') {
+      console.log('[API] ⭐ addBreaksBatch 已偵測！breaks 數量:', body.breaks?.length);
     }
     
     const supabaseUrl = env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
@@ -250,7 +256,15 @@ async function handleAPI(request, env) {
       case 'updateUser': result = await handleUpdateUser(body, supabase); break;
       case 'addProduct': result = await handleAddProduct(body, supabase); break;
       case 'cleanupDuplicateUsers': result = await handleCleanupDuplicateUsers(body, supabase); break;
-      default: result = { success: false, message: `未知的 action: ${action}` };
+      default: 
+        console.error('[API] ❌ 未知的 action:', action);
+        console.log('[API] 可用的 actions:', [
+          'login', 'registerUser', 'getProducts', 'getOrderInfo', 'addOrderEntriesToMain',
+          'createEcpayPayment', 'checkPaymentStatus', 'submitPaymentNotification',
+          'adminLogin', 'getNotifications', 'updateNotification', 'searchOrders', 'updateOrder',
+          'getAllBreaks', 'updateBreak', 'addBreaksBatch', 'getUsers', 'searchUsers', 'updateUser'
+        ]);
+        result = { success: false, message: `未知的 action: ${action}` };
     }
     
     return new Response(JSON.stringify(result), {
