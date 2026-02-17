@@ -281,6 +281,22 @@
       💡 <strong>使用說明：</strong>方法1: 直接貼上訂單文字自動解析 | 方法2: 手動填寫資料
     </div>
 
+    <div class="form-section" style="background: #f0f9ff; border-left: 4px solid #2196F3;">
+      <h3 style="margin-bottom: 15px; color: #1e3c72;">⚙️ 系統連結設定</h3>
+      <div class="row">
+        <div class="form-group">
+          <label>API 端點 URL</label>
+          <input type="text" id="apiEndpoint" placeholder="例: https://supabase.cnkuoc.workers.dev" value="https://supabase.cnkuoc.workers.dev">
+        </div>
+        <div class="form-group">
+          <label>狀態</label>
+          <div style="padding: 10px 12px; background: #e8f5e9; border-radius: 6px; color: #2e7d32; border: 2px solid #4caf50;">
+            ✅ 系統已連結
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="form-section" style="background: #e3f2fd;">
       <h3 style="margin-bottom: 15px; color: #1e3c72;">⚡ 快速貼上模式</h3>
       
@@ -378,8 +394,12 @@
     <div class="output-section" id="outputSection" style="display: none;">
       <h3 style="color: #1e3c72; margin-bottom: 15px;">📊 生成結果</h3>
       <div class="table-output" id="tableOutput"></div>
-      <button class="btn copy-btn" onclick="copyTable()">📋 複製表格</button>
+      <div style="display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap;">
+        <button class="btn copy-btn" onclick="copyTable()">📋 複製表格</button>
+        <button class="btn" style="background: linear-gradient(135deg, #4caf50, #66bb6a); flex: 1;" onclick="addToSystem()">🚀 新增到系統</button>
+      </div>
       <div class="success-message" id="successMessage">✅ 已複製到剪貼簿！</div>
+      <div id="systemMessage" style="margin-top: 15px; padding: 12px 20px; border-radius: 6px; display: none;"></div>
     </div>
   </div>
 
@@ -853,6 +873,139 @@
       } catch (err) {
         alert('複製失敗，請手動選取表格內容複製');
       }
+    }
+
+    async function addToSystem() {
+      const apiEndpoint = document.getElementById('apiEndpoint').value.trim();
+      
+      if (!apiEndpoint) {
+        showSystemMessage('❌ 請先設定 API 端點', 'error');
+        return;
+      }
+
+      // 取得表格資料
+      let breaksData = [];
+      
+      if (window.currentTableData && window.currentTableData.length > 0) {
+        // 快速模式的資料
+        breaksData = window.currentTableData;
+      } else {
+        // 手動模式的資料
+        const buyer = document.getElementById('buyer').value.trim();
+        const breakNumber = document.getElementById('breakNumber').value.trim();
+        const category = document.getElementById('category').value;
+        const breakName = document.getElementById('breakName').value.trim();
+        const breakType = document.getElementById('breakType').value;
+
+        const items = [];
+        const itemRows = document.querySelectorAll('.item-row');
+        
+        itemRows.forEach(row => {
+          const name = row.querySelector('.item-name').value.trim();
+          const price = row.querySelector('.item-price').value.trim();
+          
+          if (name && price) {
+            items.push({
+              name: name,
+              price: parseInt(price)
+            });
+          }
+        });
+
+        if (items.length === 0) {
+          showSystemMessage('❌ 沒有要新增的品項', 'error');
+          return;
+        }
+
+        const totalPrice = items.reduce((sum, item) => sum + item.price, 0);
+
+        // 轉換為單條記錄
+        breaksData = [{
+          buyer: buyer,
+          breakNumber: breakNumber,
+          category: category,
+          breakName: breakName,
+          breakType: breakType,
+          itemName: items.map(i => i.name).join('、'),
+          totalPrice: totalPrice
+        }];
+      }
+
+      if (breaksData.length === 0) {
+        showSystemMessage('❌ 沒有可新增的資料', 'error');
+        return;
+      }
+
+      // 顯示加載中
+      showSystemMessage('⏳ 正在新增到系統...', 'loading');
+
+      try {
+        const response = await fetch(`${apiEndpoint}/api/worker`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            action: 'addBreaksBatch',
+            breaks: breaksData
+          })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          let message = `✅ 成功新增 ${result.added.length} 筆團拆`;
+          if (result.errors && result.errors.length > 0) {
+            message += `\n⚠️ ${result.errors.length} 筆失敗:\n`;
+            result.errors.forEach(err => {
+              message += `  • ${err.buyer} (${err.breakNumber}): ${err.error}\n`;
+            });
+          }
+          
+          showSystemMessage(message, 'success');
+          
+          // 3 秒後清空表單和重置
+          setTimeout(() => {
+            resetForm();
+            showSystemMessage('', 'none');
+          }, 3000);
+        } else {
+          showSystemMessage(`❌ 新增失敗: ${result.message}`, 'error');
+          if (result.errors && result.errors.length > 0) {
+            console.log('詳細錯誤:', result.errors);
+          }
+        }
+      } catch (error) {
+        console.error('API 請求失敗:', error);
+        showSystemMessage(`❌ 連接失敗: ${error.message}`, 'error');
+      }
+    }
+
+    function showSystemMessage(message, type) {
+      const msgDiv = document.getElementById('systemMessage');
+      
+      if (type === 'none' || !message) {
+        msgDiv.style.display = 'none';
+        return;
+      }
+
+      msgDiv.style.display = 'block';
+      
+      if (type === 'success') {
+        msgDiv.style.background = '#d4edda';
+        msgDiv.style.color = '#155724';
+        msgDiv.style.border = '1px solid #c3e6cb';
+      } else if (type === 'error') {
+        msgDiv.style.background = '#f8d7da';
+        msgDiv.style.color = '#721c24';
+        msgDiv.style.border = '1px solid #f5c6cb';
+      } else if (type === 'loading') {
+        msgDiv.style.background = '#fff3cd';
+        msgDiv.style.color = '#856404';
+        msgDiv.style.border = '1px solid #ffeeba';
+      }
+      
+      msgDiv.innerHTML = message.replace(/\n/g, '<br>');
     }
   </script>
 </body>

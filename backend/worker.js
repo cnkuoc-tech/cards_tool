@@ -244,6 +244,7 @@ async function handleAPI(request, env) {
       case 'updateOrder': result = await handleUpdateOrder(body, supabase); break;
       case 'getAllBreaks': result = await handleGetAllBreaks(body, supabase); break;
       case 'updateBreak': result = await handleUpdateBreak(body, supabase); break;
+      case 'addBreaksBatch': result = await handleAddBreaksBatch(body, supabase); break;
       case 'getUsers': result = await handleGetUsers(body, supabase); break;
       case 'searchUsers': result = await handleSearchUsers(body, supabase); break;
       case 'updateUser': result = await handleUpdateUser(body, supabase); break;
@@ -3003,6 +3004,151 @@ async function handleUpdateBreak(body, supabase) {
   } catch (error) {
     console.error('[updateBreak] 錯誤:', error);
     return { success: false, message: '更新失敗: ' + error.message };
+  }
+}
+
+// ==================== 新增團拆批次 API ====================
+
+/**
+ * 批次新增團拆記錄
+ * 從 break_order_generator 接收的資料格式
+ */
+async function handleAddBreaksBatch(body, supabase) {
+  const { breaks } = body;
+  
+  if (!Array.isArray(breaks) || breaks.length === 0) {
+    return { success: false, message: '請提供至少一筆團拆資料' };
+  }
+
+  try {
+    console.log('[addBreaksBatch] 開始批次新增，總數:', breaks.length);
+    
+    const results = [];
+    const errors = [];
+    
+    for (const breakData of breaks) {
+      try {
+        const { buyer, breakNumber, category, breakName, breakType, itemName, totalPrice } = breakData;
+        
+        if (!buyer || !breakNumber || !breakName || !totalPrice) {
+          errors.push({
+            buyer,
+            breakNumber,
+            error: '缺少必填欄位 (訂購人、編號、名稱、金額)'
+          });
+          continue;
+        }
+        
+        // 根據訂購人名稱查找對應的 user_id
+        console.log('[addBreaksBatch] 查詢訂購人:', buyer);
+        
+        const userQueryUrl = `${supabase.url}/rest/v1/users?select=id,phone,nickname,email&nickname=ilike.*${encodeURIComponent(buyer)}*`;
+        const userResp = await fetch(userQueryUrl, {
+          headers: {
+            'apikey': supabase.apiKey,
+            'Authorization': `Bearer ${supabase.apiKey}`
+          }
+        });
+        
+        let users = await userResp.json();
+        if (!Array.isArray(users)) {
+          users = [];
+        }
+        
+        let userId;
+        if (users.length > 0) {
+          userId = users[0].id;
+          console.log('[addBreaksBatch] 找到訂購人 user_id:', userId);
+        } else {
+          // 如果查詢不到該訂購人，返回錯誤但繼續處理其他記錄
+          errors.push({
+            buyer,
+            breakNumber,
+            error: '找不到對應的訂購人，請先在系統中建立使用者'
+          });
+          continue;
+        }
+        
+        // 計算新的 break_id（根據 breakNumber 生成）
+        // 格式: Ning-024_Alex (break_id_sequence)
+        const breakId = `${breakNumber}_${buyer}`;
+        
+        // 準備新增的資料
+        const newBreak = {
+          break_id: breakId,
+          user_id: userId,
+          name: breakName,
+          category: category || '棒球⚾️',
+          total_fee: parseFloat(totalPrice),
+          paid: 0,
+          balance: parseFloat(totalPrice),
+          status: '未付款',
+          is_opened: false,
+          is_shipped: false,
+          created_at: new Date().toISOString()
+        };
+        
+        console.log('[addBreaksBatch] 新增資料:', JSON.stringify(newBreak));
+        
+        // 新增到資料庫
+        const insertUrl = `${supabase.url}/rest/v1/breaks`;
+        const insertResp = await fetch(insertUrl, {
+          method: 'POST',
+          headers: {
+            'apikey': supabase.apiKey,
+            'Authorization': `Bearer ${supabase.apiKey}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify(newBreak)
+        });
+        
+        if (!insertResp.ok) {
+          const errText = await insertResp.text();
+          errors.push({
+            buyer,
+            breakNumber,
+            error: '新增失敗: ' + errText
+          });
+          console.error('[addBreaksBatch] 新增失敗:', errText);
+          continue;
+        }
+        
+        const insertResult = await insertResp.json();
+        console.log('[addBreaksBatch] ✅ 新增成功:', buyer, breakNumber);
+        
+        results.push({
+          buyer,
+          breakNumber,
+          id: Array.isArray(insertResult) ? insertResult[0]?.id : insertResult?.id,
+          success: true
+        });
+        
+      } catch (itemError) {
+        console.error('[addBreaksBatch] 處理項目錯誤:', itemError);
+        errors.push({
+          buyer: breakData.buyer,
+          breakNumber: breakData.breakNumber,
+          error: itemError.message
+        });
+      }
+    }
+    
+    console.log('[addBreaksBatch] 完成，成功:', results.length, '失敗:', errors.length);
+    
+    return {
+      success: errors.length === 0,
+      message: `已新增 ${results.length} 筆團拆${errors.length > 0 ? '，' + errors.length + ' 筆失敗' : ''}`,
+      added: results,
+      errors: errors.length > 0 ? errors : null
+    };
+    
+  } catch (error) {
+    console.error('[addBreaksBatch] 批次新增失敗:', error);
+    return { 
+      success: false, 
+      message: '批次新增失敗: ' + error.message 
+    };
   }
 }
 
