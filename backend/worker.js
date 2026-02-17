@@ -2449,12 +2449,23 @@ async function handleUpdateNotification(body, supabase) {
     body: JSON.stringify({ status: status })
   });
   
-  const result = await response.json();
+  let result = [];
+  const responseText = await response.text();
+  
+  // 只有當回應不為空時才解析 JSON
+  if (responseText && responseText.trim()) {
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseErr) {
+      console.error('[updateNotification] JSON 解析失敗:', parseErr);
+      result = [];
+    }
+  }
   
   if (response.ok) {
     return { success: true, message: '更新成功' };
   } else {
-    return { success: false, message: '更新失敗: ' + (result.message || result.details) };
+    return { success: false, message: '更新失敗: ' + (result.message || result.details || '未知錯誤') };
   }
 }
 
@@ -2633,7 +2644,19 @@ async function handleUpdateOrder(body, supabase) {
     
     console.log('[handleUpdateOrder] HTTP 狀態:', response.status);
     
-    const result = await response.json();
+    let result = [];
+    const responseText = await response.text();
+    console.log('[handleUpdateOrder] 原始回應:', responseText);
+    
+    // 只有當回應不為空時才解析 JSON
+    if (responseText && responseText.trim()) {
+      try {
+        result = JSON.parse(responseText);
+      } catch (parseErr) {
+        console.error('[handleUpdateOrder] JSON 解析失敗:', parseErr, '回應內容:', responseText);
+        result = [];
+      }
+    }
     
     if (response.ok) {
       console.log('[handleUpdateOrder] ✅ 更新成功，返回:', result);
@@ -2906,11 +2929,15 @@ async function handleUpdateBreak(body, supabase) {
   }
   
   try {
-    console.log('[updateBreak] 更新團拆 ID: ' + id);
+    console.log('[updateBreak] 更新團拆 ID: ' + id, '狀態:', status, '已付金額:', paid);
     
     const updateData = {};
     if (status !== undefined) updateData.status = status;
     if (paid !== undefined) updateData.paid = parseFloat(paid);
+    
+    if (Object.keys(updateData).length === 0) {
+      return { success: false, message: '沒有要更新的欄位' };
+    }
     
     const updateUrl = `${supabase.url}/rest/v1/breaks?id=eq.${id}`;
     
@@ -2919,10 +2946,13 @@ async function handleUpdateBreak(body, supabase) {
       headers: {
         'apikey': supabase.apiKey,
         'Authorization': `Bearer ${supabase.apiKey}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'  // 🔑 要求返回更新後的記錄
       },
       body: JSON.stringify(updateData)
     });
+    
+    console.log('[updateBreak] HTTP 狀態:', response.status);
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -2930,13 +2960,26 @@ async function handleUpdateBreak(body, supabase) {
       return { success: false, message: '更新失敗: ' + response.statusText };
     }
     
-    const result = await response.json();
-    console.log('[updateBreak] 更新成功:', JSON.stringify(updateData));
+    let result = [];
+    const responseText = await response.text();
+    console.log('[updateBreak] 原始回應:', responseText);
+    
+    // 🔑 只有當回應不為空時才解析 JSON
+    if (responseText && responseText.trim()) {
+      try {
+        result = JSON.parse(responseText);
+      } catch (parseErr) {
+        console.error('[updateBreak] JSON 解析失敗:', parseErr, '回應內容:', responseText);
+        result = [];
+      }
+    }
+    
+    console.log('[updateBreak] 更新成功:', JSON.stringify(updateData), '結果:', JSON.stringify(result));
     
     return { 
       success: true, 
       message: '團拆已更新',
-      break: result[0] || {}
+      break: Array.isArray(result) ? result[0] : result
     };
   } catch (error) {
     console.error('[updateBreak] 錯誤:', error);
