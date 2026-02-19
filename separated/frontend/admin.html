@@ -1490,6 +1490,10 @@
       
       pageOrders.forEach(order => {
         const manualPriceIcon = order.remark === true || order.remark === 'true' ? ' 🔒' : '';
+        // 💰 如果尾款 <= 0，自動判定為已結清
+        const displayStatus = (order.balance_amount <= 0) ? '已結清' : (order.status || '未知');
+        const statusColor = (order.balance_amount <= 0 || order.status === '已結清') ? '#27ae60' : '';
+        
         html += `<tr>
           <td style="width: 40px;"><input type="checkbox" class="order-checkbox" data-order-id="${order.id}" onchange="updateBatchSelectUI()"></td>
           <td>${order.nickname || '-'}</td>
@@ -1499,7 +1503,7 @@
           <td>${order.quantity || '-'}</td>
           <td>NT$ ${order.total_fee || 0}</td>
           <td>NT$ ${order.balance_amount || 0}</td>
-          <td><strong>${order.status || '未知'}</strong></td>
+          <td><strong style="color: ${statusColor}">${displayStatus}</strong></td>
           <td>
             <button class="action-btn btn-edit" data-order-id="${order.id}" data-order-item="${(order.item || '').replace(/"/g, '&quot;')}" data-order-status="${order.status || ''}" data-order-balance="${order.balance_amount || 0}" data-order-notes="${(order.notes || '').replace(/"/g, '&quot;')}" data-order-manual-price="${order.remark || false}" onclick="handleEditOrderClick(this)">編輯</button>
             <button class="action-btn btn-delete" onclick="deleteOrder('${order.id}', '${(order.item || '').replace(/'/g, "\\'")}')">刪除</button>
@@ -2938,6 +2942,10 @@
       
       pageBreaks.forEach(breakItem => {
         const balance = (breakItem.total_fee || 0) - (breakItem.paid || 0);
+        // 💰 如果尾款 <= 0，自動判定為已結清
+        const displayStatus = (balance <= 0) ? '已結清' : (breakItem.status || '未知');
+        const statusColor = (balance <= 0 || breakItem.status === '已結清') ? '#27ae60' : '';
+        
         html += `<tr>
           <td style="width: 40px;"><input type="checkbox" class="break-checkbox" data-break-id="${breakItem.id}" onchange="updateBreakBatchSelectUI()"></td>
           <td>${breakItem.break_id || '-'}</td>
@@ -2946,8 +2954,8 @@
           <td>${breakItem.category || '-'}</td>
           <td style="text-align: right;">NT$ ${(breakItem.total_fee || 0).toLocaleString()}</td>
           <td style="text-align: right;">NT$ ${(breakItem.paid || 0).toLocaleString()}</td>
-          <td style="text-align: right; font-weight: bold; color: #e74c3c;">NT$ ${balance.toLocaleString()}</td>
-          <td><strong>${breakItem.status || '未知'}</strong></td>
+          <td style="text-align: right; font-weight: bold; color: ${balance <= 0 ? '#27ae60' : '#e74c3c'};">NT$ ${balance.toLocaleString()}</td>
+          <td><strong style="color: ${statusColor}">${displayStatus}</strong></td>
           <td>${breakItem.item || '-'}</td>
           <td style="text-align: center;">${breakItem.is_opened ? '✓' : '-'}</td>
           <td style="text-align: center;">${breakItem.is_shipped ? '✓' : '-'}</td>
