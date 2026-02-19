@@ -1794,10 +1794,16 @@
         // 👤 如果選擇了新客戶，加入更新數據
         if (newUserId) {
           updateData.user_id = newUserId;
-          console.log('更新訂單客戶:', newUserId);
+          console.log('🔄 更新訂單客戶:', newUserId);
+          const selectedOption = document.getElementById('editOrderUserId').selectedOptions[0];
+          console.log('📝 選擇的客戶:', selectedOption ? selectedOption.textContent : '未知');
+        } else {
+          console.log('ℹ️ 未選擇新客戶，不更新 user_id');
         }
         
+        console.log('📤 發送更新請求:', updateData);
         const res = await callAPI('updateOrder', updateData);
+        console.log('📥 更新回應:', res);
 
         if (res && res.success) {
           alert('✅ 訂單已更新');
@@ -1950,17 +1956,23 @@
         await loadAllUsersToCache();
       }
       
+      console.log('🔍 搜尋客戶 - 總用戶數:', allUsersCache.length);
+      
       const searchTerm = document.getElementById('editOrderUserSearch').value.trim().toLowerCase();
       if (!searchTerm) {
         alert('請輸入搜尋關鍵字');
         return;
       }
       
+      console.log('🔍 搜尋關鍵字:', searchTerm);
+      
       const filtered = allUsersCache.filter(u => {
         const phone = (u.phone || '').toString().toLowerCase();
         const nickname = (u.nickname || '').toLowerCase();
         return phone.includes(searchTerm) || nickname.includes(searchTerm);
       });
+      
+      console.log('📋 搜尋結果:', filtered.length, '筆');
       
       const selectEl = document.getElementById('editOrderUserId');
       selectEl.innerHTML = '<option value="">-- 選擇用戶 --</option>';
@@ -1970,6 +1982,7 @@
         option.value = u.id;
         option.textContent = `${u.nickname || '未命名'} (${u.phone})`;
         selectEl.appendChild(option);
+        console.log('  ✓', u.nickname, u.phone, 'ID:', u.id);
       });
       
       selectEl.style.display = 'block';

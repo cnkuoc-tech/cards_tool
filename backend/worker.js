@@ -3124,6 +3124,8 @@ async function handleUpdateOrder(body, supabase) {
   try {
     const { id, status, balance, balance_amount, notes, manual_price, user_id } = body;
     
+    console.log('[handleUpdateOrder] 接收到的資料:', { id, status, balance, balance_amount, notes, manual_price, user_id });
+    
     const updateData = {};
     if (status) updateData.status = status;
     // 同時支持 balance 和 balance_amount，優先使用傳入的任一個
@@ -3131,9 +3133,14 @@ async function handleUpdateOrder(body, supabase) {
     if (balance_amount !== undefined) updateData.balance_amount = balance_amount;
     if (notes) updateData.notes = notes;
     if (manual_price !== undefined) updateData.remark = manual_price; // 使用 remark 欄位存儲手動調價標記
-    // 👤 支持更新客戶（用於轉讓訂單）
-    if (user_id) updateData.user_id = user_id;
+    // 👤 支持更新客戶（用於轉讓訂單）- 改用 !== undefined 避免空字串被過濾
+    if (user_id !== undefined) {
+      updateData.user_id = user_id;
+      console.log('[handleUpdateOrder] 👤 將更新 user_id 為:', user_id);
+    }
     updateData.updated_at = new Date().toISOString();
+    
+    console.log('[handleUpdateOrder] 準備更新的資料:', updateData);
 
     const updateUrl = `${supabase.url}/rest/v1/orders?id=eq.${id}`;
     
@@ -3657,8 +3664,8 @@ async function handleUpdateBreak(body, supabase) {
     if (item !== undefined) updateData.item = item;
     if (is_opened !== undefined) updateData.is_opened = is_opened;
     if (is_shipped !== undefined) updateData.is_shipped = is_shipped;
-    // 👤 支持更新客戶（用於轉讓團拆）
-    if (user_id) updateData.user_id = user_id;
+    // 👤 支持更新客戶（用於轉讓團拆）- 改用 !== undefined 避免空字串被過濾
+    if (user_id !== undefined) updateData.user_id = user_id;
     
     if (Object.keys(updateData).length === 0) {
       return { success: false, message: '沒有要更新的欄位' };
