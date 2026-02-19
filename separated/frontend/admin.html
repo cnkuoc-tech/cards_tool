@@ -786,6 +786,18 @@
         <label>商品</label>
         <input type="text" id="editOrderItem" readonly />
         
+        <label>👤 訂購者（可轉讓給其他客戶）</label>
+        <div id="editOrderCurrentUser" style="padding: 10px; background: #f0f4f8; border-radius: 4px; margin-bottom: 10px; display: none;">
+          <strong>當前客戶：</strong><span id="editOrderCurrentUserInfo"></span>
+        </div>
+        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+          <input type="text" id="editOrderUserSearch" placeholder="輸入電話或暱稱搜尋..." style="flex: 1;" />
+          <button type="button" onclick="searchUsersForOrder()" style="padding: 8px 16px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer;">🔍 搜尋</button>
+        </div>
+        <select id="editOrderUserId" size="5" style="width: 100%; margin-bottom: 15px; display: none;">
+          <option value="">未選擇</option>
+        </select>
+        
         <label>狀態</label>
         <select id="editOrderStatus">
           <option value="待確認">待確認</option>
@@ -823,6 +835,18 @@
         
         <label>團名</label>
         <input type="text" id="editBreakName" readonly />
+        
+        <label>👤 訂購者（可轉讓給其他客戶）</label>
+        <div id="editBreakCurrentUser" style="padding: 10px; background: #f0f4f8; border-radius: 4px; margin-bottom: 10px; display: none;">
+          <strong>當前客戶：</strong><span id="editBreakCurrentUserInfo"></span>
+        </div>
+        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+          <input type="text" id="editBreakUserSearch" placeholder="輸入電話或暱稱搜尋..." style="flex: 1;" />
+          <button type="button" onclick="searchUsersForBreak()" style="padding: 8px 16px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer;">🔍 搜尋</button>
+        </div>
+        <select id="editBreakUserId" size="5" style="width: 100%; margin-bottom: 15px; display: none;">
+          <option value="">未選擇</option>
+        </select>
         
         <label>購買品項</label>
         <input type="text" id="editBreakItem" placeholder="例如：1注、湖人隊、LeBron James" />
