@@ -1,5 +1,5 @@
 name = "supabase-api"
-main = "worker_supabase_integrated.js"
+main = "backend/worker.js"
 compatibility_date = "2024-01-01"
 
 # 環境變數（本地開發用）

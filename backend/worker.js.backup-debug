@@ -99,7 +99,7 @@ class SupabaseClient {
 
       const contentRange = response.headers.get('Content-Range');
       if (contentRange) {
-
+        console.log('[queryAll] Content-Range:', contentRange);
         const totalMatch = contentRange.match(/\/(\d+)$/);
         if (totalMatch) total = parseInt(totalMatch[1], 10);
       }
@@ -147,13 +147,13 @@ function getTaiwanTimeISO() {
 const DEFAULT_SUPABASE_URL = 'https://hmqwcpstzkxfwabasqgx.supabase.co';
 const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhtcXdjcHN0emt4ZndhYmFzcWd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk0MTM1OTgsImV4cCI6MjA4NDk4OTU5OH0.UJWsWXL-1_L6cGsmoBVSlsYlEEGMSp1F_wyXAc1hB8E';
 
-// ==================== 💳 綠界金流設定 (正式環境) ====================
+// ==================== 💳 綠界金流設定 (測試環境) ====================
 const ECPAY_CONFIG = {
-  MerchantID: '3479617',                 // 正式環境特店編號
-  HashKey: 'iN7DSsQl9AwHZgzv',           // 正式環境 HashKey
-  HashIV: 'FjgpEgbzEzUVHgTW',            // 正式環境 HashIV
-  PaymentURL: 'https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5',
-  QueryURL: 'https://payment.ecpay.com.tw/Cashier/QueryTradeInfo/V5',
+  MerchantID: '3002607',                 // 測試環境特店編號
+  HashKey: 'pwFHCqoQZGmho4w6',           // 測試環境 HashKey
+  HashIV: 'EkRm7iFT261dpevs',            // 測試環境 HashIV
+  PaymentURL: 'https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5',
+  QueryURL: 'https://payment-stage.ecpay.com.tw/Cashier/QueryTradeInfo/V5',
   ChoosePayment: 'Credit',               // 只開放信用卡付款
   EncryptType: 1
 };
@@ -199,11 +199,11 @@ async function fetchAllOrdersForAccumulation(supabase) {
     try {
       const rows = await supabase.queryAll(source.table, { select: source.select });
       if (Array.isArray(rows) && rows.length > 0) {
-
+        console.log('[ACCUM] 使用訂單來源:', source.table, '筆數:', rows.length);
         return { table: source.table, rows };
       }
       if (Array.isArray(rows)) {
-
+        console.log('[ACCUM] 訂單來源無資料:', source.table);
       }
     } catch (error) {
       console.error('[ACCUM] 讀取訂單來源失敗:', source.table, error);
@@ -219,13 +219,19 @@ async function handleAPI(request, env) {
     const { action } = body;
     
     // 📊 記錄所有 action
-
+    console.log('[API] 收到 action:', action);
+    console.log('[API] 完整 body:', JSON.stringify(body).substring(0, 200));
+    
     if (action === 'createEcpayPayment') {
-
+      console.log('[API] ⭐ createEcpayPayment 已偵測！參數:', {
+        phone: body.phone,
+        totalAmount: body.totalAmount,
+        itemName: body.itemName
+      });
     }
     
     if (action === 'addBreaksBatch') {
-
+      console.log('[API] ⭐ addBreaksBatch 已偵測！breaks 數量:', body.breaks?.length);
     }
     
     const supabaseUrl = env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
@@ -305,7 +311,12 @@ async function handleAPI(request, env) {
       case 'deleteShipment': result = await handleDeleteShipment(body, supabase); break;
       default: 
         console.error('[API] ❌ 未知的 action:', action);
-
+        console.log('[API] 可用的 actions:', [
+          'login', 'registerUser', 'getProducts', 'getOrderInfo', 'addOrderEntriesToMain',
+          'createEcpayPayment', 'checkPaymentStatus', 'submitPaymentNotification',
+          'adminLogin', 'getNotifications', 'updateNotification', 'searchOrders', 'updateOrder',
+          'getAllBreaks', 'updateBreak', 'addBreaksBatch', 'getUsers', 'searchUsers', 'updateUser'
+        ]);
         result = { success: false, message: `未知的 action: ${action}` };
     }
     
@@ -379,48 +390,60 @@ async function handleDebugAccum(body, supabase) {
 
 async function handleLogin(body, supabase) {
   const { phone, birthday } = body;
-
+  console.log('[LOGIN] Attempt: phone=' + phone + ', birthday=' + birthday);
+  
   const users = await supabase.query('users', { eq: { phone } });
-
+  console.log('[LOGIN] Users query result:', JSON.stringify(users));
+  
   if (!Array.isArray(users) || users.length === 0) {
-
+    console.log('[LOGIN] ERROR: Phone not found: ' + phone);
     return { success: false, message: '電話號碼或生日錯誤' }; // 不透露具體是哪個錯誤
   }
   
   const user = users[0];
-
+  console.log('[LOGIN] User found:', JSON.stringify(user));
+  
   // 🔒 嚴格驗證生日
   const userBirthday = String(user.birthday || '').trim();
   const inputBirthday = String(birthday || '').trim();
-
+  
+  console.log('[LOGIN] Birthday comparison:');
+  console.log('[LOGIN] - DB birthday:', userBirthday);
+  console.log('[LOGIN] - Input birthday:', inputBirthday);
+  
   // 🔑 嚴格比對生日，必須完全一致
   if (userBirthday !== inputBirthday) {
-
+    console.log('[LOGIN] ERROR: Birthday mismatch');
+    console.log('[LOGIN] - Expected:', userBirthday, '(length:', userBirthday.length + ')');
+    console.log('[LOGIN] - Got:', inputBirthday, '(length:', inputBirthday.length + ')');
     return { success: false, message: '電話號碼或生日錯誤' }; // 不透露具體是哪個錯誤
   }
-
+  
+  console.log('[LOGIN] ✅ SUCCESS for ' + phone);
   return { success: true, user };
 }
 
 async function handleRegisterUser(body, supabase) {
   try {
     let { phone, nickname, birthday, email, address, realName, storeNumber } = body;
-
+    
+    console.log('📝 註冊資料:', { phone, nickname, birthday, realName, address, storeNumber });
+    
     // 🔑 確保手機號碼有開頭 0
     if (phone && !phone.startsWith('0')) {
       phone = '0' + phone;
-
+      console.log('✅ 已自動加上手機號碼開頭 0:', phone);
     }
     
     // 驗證手機號碼格式（0 開頭的 10 位數字）
     if (!/^0\d{9}$/.test(phone)) {
-
+      console.log('❌ 手機號碼格式不正確:', phone);
       return { success: false, message: '手機號碼格式不正確，請輸入 0 開頭的 10 位數字' };
     }
     
     const existing = await supabase.query('users', { eq: { phone } });
     if (existing && existing.length > 0) {
-
+      console.log('❌ 手機號碼已存在:', phone);
       return { success: false, message: '此電話號碼已註冊' };
     }
     
@@ -434,9 +457,12 @@ async function handleRegisterUser(body, supabase) {
       cvs_store_name: address || '',      // 🔑 門市名稱
       cvs_store_id: storeNumber || ''     // 🔑 門市編號
     }];
-
+    
+    console.log('💾 準備插入用戶資料:', newUser);
+    
     const result = await supabase.insert('users', newUser);
-
+    console.log('✅ 插入結果:', result);
+    
     if (result && result.length > 0) {
       return { success: true, message: '註冊成功！', user: result[0] };
     }
@@ -451,7 +477,8 @@ async function handleRegisterUser(body, supabase) {
 async function handleGetProducts(body, supabase) {
   try {
     const products = await supabase.query('product_catalog', {});
-
+    console.log('[PRODUCTS] Query returned ' + (Array.isArray(products) ? products.length : 'non-array') + ' items');
+    
     if (!Array.isArray(products)) {
       console.error('[PRODUCTS] ERROR: Not an array:', products);
       return { success: false, message: `資料格式錯誤: ${JSON.stringify(products)}` };
@@ -462,16 +489,19 @@ async function handleGetProducts(body, supabase) {
     }
     
     // 記錄第一筆商品的原始資料
-
+    console.log('[PRODUCTS] Sample product (first):', JSON.stringify(products[0]));
+    
     // 🌟 動態計算每個商品的累積張數（從 orders 資料表實時加總）
-
+    console.log('[PRODUCTS] 開始動態計算累積張數...');
     const accumulatedMap = new Map();
     const accumulatedItemMap = new Map();
     
     try {
       // 🔑 使用 queryAll 查詢所有訂單（無限制）
       const { rows: allOrders } = await fetchAllOrdersForAccumulation(supabase);
-
+      
+      console.log('[PRODUCTS] 查詢到 ' + (Array.isArray(allOrders) ? allOrders.length : 0) + ' 筆訂單');
+      
       if (Array.isArray(allOrders)) {
         // 按商品名稱和卡號分組加總
         allOrders.forEach((order, idx) => {
@@ -483,7 +513,7 @@ async function handleGetProducts(body, supabase) {
           
           // 除錯：顯示前 3 筆訂單的原始資料
           if (idx < 3) {
-
+            console.log('[PRODUCTS] 訂單 #' + idx + ': item="' + orderItem + '", card_no="' + orderCard + '", qty=' + qty + ', key="' + key + '"');
           }
           
           if (qty > 0 && itemKey) {
@@ -491,12 +521,13 @@ async function handleGetProducts(body, supabase) {
             accumulatedItemMap.set(itemKey, (accumulatedItemMap.get(itemKey) || 0) + qty);
           }
         });
-
+        console.log('[PRODUCTS] 累積張數計算完成，共 ' + accumulatedMap.size + ' 個商品有訂單');
+        
         // 顯示前幾個商品的累積張數（用於除錯）
         let count = 0;
         for (const [key, qty] of accumulatedMap) {
           if (count < 5) {
-
+            console.log('[PRODUCTS] 範例累積: "' + key + '" = ' + qty + ' 張');
             count++;
           } else {
             break;
@@ -549,7 +580,9 @@ async function handleGetProducts(body, supabase) {
     
     const boxCount = items.filter(i => i.isBox === 'Y').length;
     const toppsCount = items.filter(i => i.isBox === 'N').length;
-
+    console.log('[PRODUCTS] Converted ' + items.length + ' items: Boxes=' + boxCount + ', Topps=' + toppsCount);
+    console.log('[PRODUCTS] Sample converted item:', JSON.stringify(items[0]));
+    
     return { success: true, items };
   } catch (error) {
     console.error('[PRODUCTS] ERROR:', error);
@@ -559,16 +592,17 @@ async function handleGetProducts(body, supabase) {
 
 async function handleGetOrderInfo(body, supabase) {
   const { phone, birthday } = body;
-
+  console.log('[ORDER_INFO] Getting order info for phone: ' + phone);
+  
   // 🔒 驗證必須提供生日
   if (!birthday) {
-
+    console.log('[ORDER_INFO] ERROR: Birthday not provided');
     return { success: false, message: '請提供生日進行驗證' };
   }
   
   const users = await supabase.query('users', { eq: { phone } });
   if (!Array.isArray(users) || users.length === 0) {
-
+    console.log('[ORDER_INFO] ERROR: User not found: ' + phone);
     return { success: false, message: '電話號碼或生日錯誤' };
   }
   
@@ -579,13 +613,16 @@ async function handleGetOrderInfo(body, supabase) {
   const inputBirthday = String(birthday || '').trim();
   
   if (userBirthday !== inputBirthday) {
-
+    console.log('[ORDER_INFO] ERROR: Birthday mismatch');
+    console.log('[ORDER_INFO] - Expected:', userBirthday);
+    console.log('[ORDER_INFO] - Got:', inputBirthday);
     return { success: false, message: '電話號碼或生日錯誤' };
   }
   
   const userId = user.id;
   const userNickname = user.nickname;
-
+  console.log('[ORDER_INFO] ✅ Auth success - User ID: ' + userId + ', Nickname: ' + userNickname);
+  
   // 查詢訂單（使用 orders 資料表）
   let orders = await supabase.query('orders', { eq: { user_id: userId }, order: { column: 'timestamp', ascending: false } });
   
@@ -596,9 +633,13 @@ async function handleGetOrderInfo(body, supabase) {
   
   // 查詢出貨紀錄（使用 shipments 資料表）
   let shipments = await supabase.query('shipments', { eq: { user_id: userId }, order: { column: 'shipment_date', ascending: false } });
-
+  
+  console.log('[ORDER_INFO] Orders: ' + (Array.isArray(orders) ? orders.length : 'non-array') + ' items');
+  console.log('[ORDER_INFO] Group breaks: ' + (Array.isArray(groupBreaks) ? groupBreaks.length : 'non-array') + ' items');
+  console.log('[ORDER_INFO] Shipments: ' + (Array.isArray(shipments) ? shipments.length : 'non-array') + ' items');
+  
   if (Array.isArray(orders) && orders.length > 0) {
-
+    console.log('[ORDER_INFO] Sample order:', JSON.stringify(orders[0]));
   }
   
   // 🌟 動態計算全站累積張數（用於訂單列表顯示）
@@ -607,7 +648,9 @@ async function handleGetOrderInfo(body, supabase) {
   try {
     // 🔑 使用 queryAll 查詢所有訂單（無限制）
     const { rows: allOrders } = await fetchAllOrdersForAccumulation(supabase);
-
+    
+    console.log('[ORDER_INFO] 查詢到 ' + (Array.isArray(allOrders) ? allOrders.length : 0) + ' 筆訂單用於計算累積');
+    
     if (Array.isArray(allOrders)) {
       allOrders.forEach(order => {
         const orderItem = order.item || order.item_name || order.product_name || '';
@@ -620,7 +663,7 @@ async function handleGetOrderInfo(body, supabase) {
           accumulatedItemMap.set(itemKey, (accumulatedItemMap.get(itemKey) || 0) + qty);
         }
       });
-
+      console.log('[ORDER_INFO] 累積張數計算完成，共 ' + accumulatedMap.size + ' 個商品有訂單');
     }
   } catch (error) {
     console.error('[ORDER_INFO] 計算累積張數失敗:', error);
@@ -688,7 +731,8 @@ async function handleGetOrderInfo(body, supabase) {
       timestamp: b.created_at
     };
   }) : [];
-
+  
+  console.log('[ORDER_INFO] 🔍 團拆分類 Debug:');
   if (Array.isArray(groupBreaks)) {
     groupBreaks.forEach((b, idx) => {
       let cleanCategory = (b.category || '棒球')
@@ -696,7 +740,7 @@ async function handleGetOrderInfo(body, supabase) {
         .replace(/[⚾🏀🎯]/g, '')
         .replace(/[^\p{L}\p{N}]/gu, '')
         .trim() || '棒球';
-
+      console.log('[ORDER_INFO]   [' + idx + '] break_id=' + b.break_id + ', raw_category=' + (b.category || 'NULL') + ', clean_category=' + cleanCategory);
     });
   }
   
@@ -715,7 +759,9 @@ async function handleGetOrderInfo(body, supabase) {
     remark: s.remark,
     createdAt: s.created_at
   })) : [];
-
+  
+  console.log('[ORDER_INFO] Returning ' + formattedOrders.length + ' orders, ' + formattedBreaks.length + ' breaks, ' + formattedShipments.length + ' shipments');
+  
   // 返回用戶資訊以及訂單和團拆記錄
   return { 
     success: true,
@@ -734,11 +780,23 @@ async function handleGetOrderInfo(body, supabase) {
 }
 
 async function handleAddOrder(body, supabase) {
-
+  console.log('[ADD_ORDER] ===== 開始處理訂單 =====');
+  console.log('[ADD_ORDER] 收到的 body:', JSON.stringify(body));
+  console.log('[ADD_ORDER] body 的 keys:', Object.keys(body));
+  
   // 🔧 同時支援 orderEntries 和 entries 兩種格式
   const { nickname, phone, orderEntries, entries } = body;
   const rawEntries = orderEntries || entries;
-
+  
+  console.log('[ADD_ORDER] nickname:', nickname);
+  console.log('[ADD_ORDER] phone:', phone);
+  console.log('[ADD_ORDER] orderEntries:', orderEntries);
+  console.log('[ADD_ORDER] entries:', entries);
+  console.log('[ADD_ORDER] rawEntries:', rawEntries);
+  console.log('[ADD_ORDER] rawEntries 類型:', typeof rawEntries);
+  console.log('[ADD_ORDER] rawEntries 是否為陣列:', Array.isArray(rawEntries));
+  console.log('[ADD_ORDER] rawEntries 長度:', rawEntries ? rawEntries.length : 'undefined');
+  
   if (!rawEntries) {
     console.error('[ADD_ORDER] ❌ 訂單資料為空');
     return { success: false, message: '訂單資料為空 (orderEntries/entries 不存在)' };
@@ -763,7 +821,10 @@ async function handleAddOrder(body, supabase) {
     quantity: entry.quantity || entry.qty || 1,
     unitPrice: entry.unitPrice || entry.price || 0
   }));
-
+  
+  console.log('[ADD_ORDER] 標準化後的訂單:', normalizedEntries);
+  console.log('[ADD_ORDER] 標準化後的訂單:', normalizedEntries);
+  
   const users = await supabase.query('users', { eq: { phone } });
   if (!users || users.length === 0) {
     return { success: false, message: '找不到用戶' };
@@ -775,7 +836,9 @@ async function handleAddOrder(body, supabase) {
   // 🌟 查詢所有商品目錄以獲取圖片、到貨狀態、門檻價等資訊
   const products = await supabase.query('product_catalog', {});
   const productMap = new Map();
-
+  
+  console.log('[ADD_ORDER] 查詢到 ' + (Array.isArray(products) ? products.length : 0) + ' 個商品');
+  
   if (Array.isArray(products)) {
     products.forEach((p, idx) => {
       // 標準化 key
@@ -783,7 +846,14 @@ async function handleAddOrder(body, supabase) {
       
       // 🔑 除錯：顯示前 3 個商品的原始資料
       if (idx < 3) {
-
+        console.log('[ADD_ORDER] 商品 #' + idx + ' 原始資料:', {
+          item_name: p.item_name,
+          card_no: p.card_no,
+          price: p.price,
+          threshold_price: p.threshold_price,
+          discount_threshold: p.discount_threshold,
+          key: key
+        });
       }
       
       // 🔑 門檻價格：優先使用 threshold_price，若為 0 則使用 price
@@ -814,7 +884,9 @@ async function handleAddOrder(body, supabase) {
   try {
     // 🔑 使用 queryAll 查詢所有訂單（無限制）
     const { rows: allOrders } = await fetchAllOrdersForAccumulation(supabase);
-
+    
+    console.log('[ADD_ORDER] 查詢到 ' + (Array.isArray(allOrders) ? allOrders.length : 0) + ' 筆訂單用於計算累積');
+    
     if (Array.isArray(allOrders)) {
       allOrders.forEach(order => {
         const orderItem = order.item || order.item_name || order.product_name || '';
@@ -827,25 +899,33 @@ async function handleAddOrder(body, supabase) {
           accumulatedItemMap.set(itemKey, (accumulatedItemMap.get(itemKey) || 0) + qty);
         }
       });
-
+      console.log('[ADD_ORDER] 累積張數計算完成，共 ' + accumulatedMap.size + ' 個商品有訂單');
     }
   } catch (error) {
     console.error('[ADD_ORDER] 計算累積張數失敗:', error);
   }
-
+  
+  console.log('[ADD_ORDER] 開始轉換訂單項目，共', normalizedEntries.length, '筆');
+  
   const ordersToInsert = normalizedEntries.map((entry, index) => {
-
+    console.log('[ADD_ORDER] 處理第', index + 1, '筆訂單，原始資料:', entry);
+    
     const itemName = String(entry.item || '').trim();
     const cardNo = String(entry.cardNo || '').trim();
     const key = buildKey(itemName, cardNo);
     const quantity = parseInt(entry.quantity) || 1;
     let unitPrice = parseFloat(entry.unitPrice) || 0;
-
+    
+    console.log('[ADD_ORDER] 處理訂單項目 #' + (index + 1) + ':', { itemName, cardNo, key, quantity, unitPrice });
+    
     // 🌟 從商品目錄獲取資訊
     const productInfo = productMap.get(key);
     let imageUrl = '';
     let arrivalStatus = '';
-
+    
+    console.log('[ADD_ORDER] 查詢商品資訊，key:', key);
+    console.log('[ADD_ORDER] productMap 中是否存在:', productMap.has(key));
+    
     if (!productInfo) {
       // 找不到商品資訊，列出所有可用的 key
       console.error('[ADD_ORDER] ❌ 找不到商品資訊！查詢 key:', key);
@@ -860,7 +940,17 @@ async function handleAddOrder(body, supabase) {
     
     imageUrl = productInfo.imageUrl;
     arrivalStatus = productInfo.arrivalStatus;
-
+    
+    console.log('[ADD_ORDER] 商品資訊:', { 
+      isOpen: productInfo.isOpen, 
+      isAvailableValue: productInfo.isAvailableValue,
+      threshold: productInfo.threshold, 
+      fullPrice: productInfo.fullPrice,
+      regularPrice: productInfo.regularPrice,
+      rawThresholdPrice: productInfo.rawThresholdPrice,
+      rawPrice: productInfo.rawPrice
+    });
+    
     // 🌟 檢查是否開放（只有明確設為 'N' 才拒絕）
     if (productInfo.isAvailableValue === 'N') {
       console.error('[ADD_ORDER] ❌ 商品已關閉:', itemName, '(is_available = N)');
@@ -883,9 +973,9 @@ async function handleAddOrder(body, supabase) {
       
       if (totalAfterOrder >= productInfo.threshold) {
         unitPrice = productInfo.fullPrice;
-
+        console.log('[ADD_ORDER] ' + itemName + ' 累積 ' + totalAfterOrder + ' 張 >= 門檻 ' + productInfo.threshold + '，使用門檻價 ' + unitPrice);
       } else {
-
+        console.log('[ADD_ORDER] ' + itemName + ' 累積 ' + totalAfterOrder + ' 張 < 門檻 ' + productInfo.threshold + '，使用原價 ' + unitPrice);
       }
     }
     
@@ -913,12 +1003,19 @@ async function handleAddOrder(body, supabase) {
       box_order: boxOrderValue
     };
   });
-
+  
+  console.log('[ADD_ORDER] 準備插入訂單，共', ordersToInsert.length, '筆');
+  console.log('[ADD_ORDER] 插入資料:', JSON.stringify(ordersToInsert, null, 2));
+  
   const result = await supabase.insert('orders', ordersToInsert);
-
+  
+  console.log('[ADD_ORDER] 插入結果:', result);
+  console.log('[ADD_ORDER] 插入成功筆數:', result ? result.length : 0);
+  
   // 🌟 扣減商品庫存（只針對卡盒商品）
   try {
-
+    console.log('[ADD_ORDER] 開始檢查是否需要扣減庫存...');
+    
     for (const entry of normalizedEntries) {
       const itemName = String(entry.item || '').trim();
       const cardNo = String(entry.cardNo || '').trim();
@@ -940,14 +1037,16 @@ async function handleAddOrder(body, supabase) {
         const isBoxProduct = parseBoolValue(products[0].is_box_preorder);
         
         if (!isBoxProduct) {
-
+          console.log('[ADD_ORDER] ⏭️ 跳過庫存扣減:', itemName, '(非卡盒商品)');
           continue;
         }
       }
       
       const currentStock = productInfo.stock || 0;
       const newStock = Math.max(0, currentStock - quantity);
-
+      
+      console.log('[ADD_ORDER] 扣減庫存 (卡盒):', itemName, '原庫存:', currentStock, '下單:', quantity, '新庫存:', newStock);
+      
       // 更新 product_catalog 的 remaining_stock
       const updateStockUrl = `${supabase.url}/rest/v1/product_catalog?item_name=eq.${encodeURIComponent(itemName)}&card_no=eq.${encodeURIComponent(cardNo)}`;
       await fetch(updateStockUrl, {
@@ -962,13 +1061,16 @@ async function handleAddOrder(body, supabase) {
           remaining_stock: newStock
         })
       });
-
+      
+      console.log('[ADD_ORDER] ✅ 已更新商品庫存:', itemName, '→', newStock);
     }
   } catch (error) {
     console.error('[ADD_ORDER] 扣減庫存失敗:', error);
     // 不影響訂單新增，只記錄錯誤
   }
-
+  
+  console.log('[ADD_ORDER] 🔍 開始檢查門檻價格更新邏輯...');
+  
   // 🌟 檢查是否需要更新舊訂單價格（達到門檻時）
   // 這是原始 backend.js 的邏輯：達到門檻後，更新所有用戶該商品的訂單價格
   try {
@@ -977,19 +1079,29 @@ async function handleAddOrder(body, supabase) {
       const cardNo = String(entry.cardNo || '').trim();
       const key = buildKey(itemName, cardNo); // 🔑 使用標準化 key
       const quantity = parseInt(entry.quantity) || 1;
-
+      
+      console.log('[ADD_ORDER] 檢查商品:', itemName, 'key:', key);
+      
       const productInfo = productMap.get(key);
       if (!productInfo || !productInfo.threshold || !productInfo.fullPrice) {
-
+        console.log('[ADD_ORDER] ⏭️ 跳過價格更新檢查:', itemName, '(無門檻設定)');
+        console.log('[ADD_ORDER]   - threshold:', productInfo?.threshold || 0);
+        console.log('[ADD_ORDER]   - fullPrice:', productInfo?.fullPrice || 0);
+        console.log('[ADD_ORDER]   - regularPrice:', productInfo?.regularPrice || 0);
+        console.log('[ADD_ORDER]   - rawThresholdPrice:', productInfo?.rawThresholdPrice);
+        console.log('[ADD_ORDER]   - rawPrice:', productInfo?.rawPrice);
+        
         // 🔑 如果有門檻數量但沒有門檻價格，使用原價作為門檻價格
         if (productInfo && productInfo.threshold > 0 && productInfo.regularPrice > 0) {
-
+          console.log('[ADD_ORDER] ⚠️ 商品有門檻數量但無門檻價格，使用原價', productInfo.regularPrice, '作為門檻價格');
           productInfo.fullPrice = productInfo.regularPrice;
         } else {
           continue;
         }
       }
-
+      
+      console.log('[ADD_ORDER] 📊 商品', itemName, '有門檻設定: threshold=' + productInfo.threshold + ', fullPrice=' + productInfo.fullPrice);
+      
       // 重新計算累積張數（包含剛新增的訂單）
       const ordersUrl = `${supabase.url}/rest/v1/orders?item=eq.${encodeURIComponent(itemName)}&card_no=eq.${encodeURIComponent(cardNo)}&select=quantity`;
       const ordersResp = await fetch(ordersUrl, {
@@ -1006,13 +1118,17 @@ async function handleAddOrder(body, supabase) {
           totalAccumulated += parseInt(o.quantity) || 0;
         });
       }
-
+      
+      console.log('[ADD_ORDER] ' + itemName + ' 最新累積: ' + totalAccumulated + ', 門檻: ' + productInfo.threshold);
+      
       // 🎯 如果達到門檻，更新「所有用戶」該商品的訂單價格（不限該用戶）
       if (totalAccumulated >= productInfo.threshold) {
-
+        console.log('[ADD_ORDER] 🎯 達到門檻！開始更新所有用戶的 ' + itemName + ' 訂單價格 -> ' + productInfo.fullPrice);
+        
         // 🔑 查詢「所有用戶」該商品的訂單（移除 user_id 限制）
         const allOrdersUrl = `${supabase.url}/rest/v1/orders?item=eq.${encodeURIComponent(itemName)}&card_no=eq.${encodeURIComponent(cardNo)}&select=id,quantity,unit_price,deposit,user_id,remark`;
-
+        console.log('[ADD_ORDER] 查詢所有訂單 URL:', allOrdersUrl);
+        
         const allOrdersResp = await fetch(allOrdersUrl, {
           headers: {
             'apikey': supabase.apiKey,
@@ -1020,7 +1136,9 @@ async function handleAddOrder(body, supabase) {
           }
         });
         const allOrders = await allOrdersResp.json();
-
+        
+        console.log('[ADD_ORDER] 查詢到 ' + (Array.isArray(allOrders) ? allOrders.length : 0) + ' 筆訂單');
+        
         if (Array.isArray(allOrders)) {
           let updatedCount = 0;
           let skippedCount = 0;
@@ -1030,12 +1148,13 @@ async function handleAddOrder(body, supabase) {
             // 🔒 跳過手動調價的訂單
             if (order.remark === true || order.remark === 'true') {
               manualPriceCount++;
-
+              console.log('[ADD_ORDER] 🔒 跳過訂單 ' + order.id + ' (手動調價鎖定)');
               continue;
             }
             
             const priceDiff = Math.abs(order.unit_price - productInfo.fullPrice);
-
+            console.log('[ADD_ORDER] 訂單 ' + order.id + ' (user_id=' + order.user_id + '): 目前價格=' + order.unit_price + ', 門檻價=' + productInfo.fullPrice + ', 差異=' + priceDiff);
+            
             // 只更新價格不是門檻價的訂單
             if (priceDiff > 0.01) {
               const newTotal = order.quantity * productInfo.fullPrice;
@@ -1056,29 +1175,33 @@ async function handleAddOrder(body, supabase) {
                   balance_amount: newBalance
                 })
               });
-
+              
+              console.log('[ADD_ORDER] PATCH 回應狀態:', patchResp.status, patchResp.statusText);
+              
               updatedCount++;
-
+              console.log('[ADD_ORDER] ✅ 已更新訂單 ' + order.id + ' 價格: ' + order.unit_price + ' -> ' + productInfo.fullPrice);
             } else {
               skippedCount++;
-
+              console.log('[ADD_ORDER] ⏭️ 跳過訂單 ' + order.id + ' (價格已是門檻價)');
             }
           }
-
+          console.log('[ADD_ORDER] 🎉 更新結果: 已更新 ' + updatedCount + ' 筆，跳過 ' + skippedCount + ' 筆（價格已正確），手動調價鎖定 ' + manualPriceCount + ' 筆');
         }
       } else {
-
+        console.log('[ADD_ORDER] ⏭️ 未達門檻，不更新舊訂單 (累積 ' + totalAccumulated + ' < 門檻 ' + productInfo.threshold + ')');
       }
     }
   } catch (error) {
     console.error('[ADD_ORDER] 更新舊訂單價格失敗:', error);
     // 不影響訂單新增，只記錄錯誤
   }
-
+  
+  console.log('[ADD_ORDER] ✅ 訂單新增完成，共 ' + normalizedEntries.length + ' 筆');
+  
   // 🌟 寄送 email 通知商家
   try {
     await sendOrderNotificationEmail(nickname, phone, ordersToInsert);
-
+    console.log('[ADD_ORDER] ✅ Email 通知已發送');
   } catch (emailError) {
     console.error('[ADD_ORDER] ❌ Email 通知發送失敗:', emailError);
     // 不影響訂單新增，只記錄錯誤
@@ -1121,7 +1244,7 @@ ${orderDetails}
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      from: 'Ning\'s Card <no-reply@ningscard.com>',
+      from: 'Ning Card Store <onboarding@resend.dev>', // Resend 預設寄件者
       to: [merchantEmail],
       subject: `🛒 新訂單通知 - ${nickname} (${phone})`,
       text: emailBody
@@ -1183,7 +1306,7 @@ ${paymentDetails}
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      from: 'Ning\'s Card <no-reply@ningscard.com>',
+      from: 'Ning Card Store <onboarding@resend.dev>',
       to: [merchantEmail],
       subject: `💰 付款通知 - ${nickname} (${phone})`,
       text: emailBody
@@ -1231,7 +1354,7 @@ Ning's Card Store
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      from: 'Ning\'s Card <no-reply@ningscard.com>',
+      from: 'Ning Card Store <onboarding@resend.dev>',
       to: [userEmail],
       subject: `🚚 出貨通知 - 訂單 ${shipmentNo}`,
       text: emailBody
@@ -1333,7 +1456,7 @@ async function handleNotifyPaymentBulk(body, supabase) {
   // 📧 寄送 email 通知商家
   try {
     await sendPaymentNotificationEmail(nickname, phone, paymentItems);
-
+    console.log('[PAYMENT_NOTIFY] ✅ Email 通知已發送');
   } catch (emailError) {
     console.error('[PAYMENT_NOTIFY] ❌ Email 通知發送失敗:', emailError);
   }
@@ -1372,14 +1495,20 @@ async function handlePaymentNotification(body, supabase) {
       status: 'pending', // 待確認
       sent_at: new Date().toISOString()
     };
-
+    
+    console.log('[NOTIFICATION] 準備寫入資料:', JSON.stringify(notificationData));
+    
     const insertResult = await supabase.insert('notifications', [notificationData]);
-
+    
+    console.log('[NOTIFICATION] 寫入結果:', JSON.stringify(insertResult));
+    
     if (insertResult && insertResult.error) {
       console.error('[NOTIFICATION] 寫入失敗:', JSON.stringify(insertResult.error));
       return { success: false, message: '付款通知寫入失敗: ' + insertResult.error.message };
     }
-
+    
+    console.log('[NOTIFICATION] ✅ 付款通知寫入成功');
+    
   } catch (error) {
     console.error('[NOTIFICATION] 存入付款通知異常:', error.toString());
     return { success: false, message: '付款通知存入異常: ' + error.message };
@@ -1390,7 +1519,9 @@ async function handlePaymentNotification(body, supabase) {
     // 訂單付款 - 根據訂單 ID 更新狀態為「付款確認中」
     if (orderIds) {
       const orderIdList = orderIds.split('||').filter(id => id);
-
+      
+      console.log('[NOTIFICATION] 準備更新訂單狀態為「付款確認中」，訂單 ID:', orderIdList);
+      
       for (const orderId of orderIdList) {
         try {
           const updateUrl = `${supabase.url}/rest/v1/orders?id=eq.${orderId}`;
@@ -1411,7 +1542,9 @@ async function handlePaymentNotification(body, supabase) {
           }
           
           const updateResult = await updateResponse.json();
-
+          console.log('[NOTIFICATION] 訂單 ID ' + orderId + ' 更新結果:', JSON.stringify(updateResult));
+          console.log('[NOTIFICATION] 訂單 ID ' + orderId + ' 更新後筆數:', Array.isArray(updateResult) ? updateResult.length : 0);
+          
         } catch (error) {
           console.error('[NOTIFICATION] 更新訂單 ID ' + orderId + ' 異常:', error.toString());
         }
@@ -1424,7 +1557,9 @@ async function handlePaymentNotification(body, supabase) {
     // 團拆付款 - 更新團拆狀態為「付款確認中」
     if (breakId) {
       const breakIdList = breakId.split('||').filter(id => id);
-
+      
+      console.log('[NOTIFICATION] 準備更新團拆狀態為「付款確認中」，團拆 ID:', breakIdList, '用戶ID:', userId);
+      
       for (const bid of breakIdList) {
         try {
           // 🔥 先用 break_id 和 user_id 查詢找到 UUID（重點：加上 user_id 過濾！）
@@ -1439,7 +1574,8 @@ async function handlePaymentNotification(body, supabase) {
           });
           
           const findResult = await findResponse.json();
-
+          console.log('[NOTIFICATION] 查詢團拆 break_id:', bid, '用戶:', userId, '找到:', findResult);
+          
           if (Array.isArray(findResult) && findResult.length > 0) {
             const breakUUID = findResult[0].id;
             
@@ -1462,7 +1598,7 @@ async function handlePaymentNotification(body, supabase) {
             }
             
             const updateResult = await updateResponse.json();
-
+            console.log('[NOTIFICATION] 團拆 UUID ' + breakUUID + ' 更新結果:', JSON.stringify(updateResult));
           } else {
             console.warn('[NOTIFICATION] 未找到團拆 break_id:', bid, '於用戶:', userId);
           }
@@ -1488,7 +1624,7 @@ async function handlePaymentNotification(body, supabase) {
     }];
     
     await sendPaymentNotificationEmail(nickname, phone, paymentItems);
-
+    console.log('[PAYMENT_NOTIFY] ✅ Email 通知已發送');
   } catch (emailError) {
     console.error('[PAYMENT_NOTIFY] ❌ Email 通知發送失敗:', emailError);
     // Email 失敗不影響付款通知功能
@@ -1649,18 +1785,22 @@ async function handleUseBreakCredit(body, supabase) {
     }
   });
   const credits = await creditsResp.json();
-
+  
+  console.log('[useBreakCredit] 查詢到的團拆金記錄數:', credits.length);
+  
   let available = 0;
   if (credits && Array.isArray(credits)) {
     credits.forEach(c => {
       const remaining = (c.amount || 0) - (c.used_amount || 0);
-
+      console.log('[useBreakCredit] 團拆金記錄 ID:', c.id, '總額:', c.amount, '已用:', c.used_amount, '剩餘:', remaining);
       if (remaining > 0) {
         available += remaining;
       }
     });
   }
-
+  
+  console.log('[useBreakCredit] 可用總額:', available, '要使用:', amount);
+  
   if (available < amount) {
     return { success: false, message: '團拆金餘額不足' };
   }
@@ -1676,7 +1816,9 @@ async function handleUseBreakCredit(body, supabase) {
     
     const amountToUse = Math.min(remainingAmount, creditRemaining);
     const newUsedAmount = (credit.used_amount || 0) + amountToUse;
-
+    
+    console.log('[useBreakCredit] 處理記錄 ID:', credit.id, '要用:', amountToUse, '新已用量:', newUsedAmount);
+    
     // 🌟 合併 breakIds 並記錄金額 (格式: "breakId@@breakName::amount")
     const existingBreakIds = credit.used_break_ids || '';
     const breakIdWithAmount = `${breakIds}::${amountToUse}`;
@@ -1901,7 +2043,9 @@ async function handleUpdateBreakCredit(body, supabase) {
 
 async function handleDeleteBreakCredit(body, supabase) {
   const { id } = body;
-
+  
+  console.log('[deleteBreakCredit] 收到刪除請求，ID:', id);
+  
   if (!id) {
     return { success: false, message: '請提供有效的ID' };
   }
@@ -1916,13 +2060,15 @@ async function handleDeleteBreakCredit(body, supabase) {
   });
   
   const records = await checkResp.json();
-
+  console.log('[deleteBreakCredit] 查詢結果:', records);
+  
   if (!Array.isArray(records) || records.length === 0) {
     return { success: false, message: '找不到該團拆金記錄' };
   }
   
   const record = records[0];
-
+  console.log('[deleteBreakCredit] 準備刪除記錄:', { id: record.id, used: record.is_used, usedAmount: record.used_amount });
+  
   const deleteUrl = `${supabase.url}/rest/v1/break_credits?id=eq.${id}`;
   const deleteResp = await fetch(deleteUrl, {
     method: 'DELETE',
@@ -1931,7 +2077,9 @@ async function handleDeleteBreakCredit(body, supabase) {
       'Authorization': `Bearer ${supabase.apiKey}`
     }
   });
-
+  
+  console.log('[deleteBreakCredit] 刪除回應狀態:', deleteResp.status);
+  
   if (!deleteResp.ok) {
     const error = await deleteResp.text();
     console.error('[deleteBreakCredit] 刪除失敗:', error);
@@ -2010,15 +2158,18 @@ async function handleLookupPsaOrders(body, supabase) {
 
 async function handleCheckDailyFortune(body, supabase) {
   const { phone } = body;
-
+  
+  console.log('🔍 checkDailyFortune - phone:', phone);
+  
   const users = await supabase.query('users', { eq: { phone } });
   if (!users || users.length === 0) {
-
+    console.log('❌ 找不到用戶');
     return { success: false, hasDrawn: false };
   }
   
   const userId = users[0].id;
-
+  console.log('✅ 找到用戶 ID:', userId);
+  
   // 🔧 取得台灣時間的今天日期範圍 (UTC+8)
   const now = new Date();
   const taiwanOffset = 8 * 60; // 台灣 UTC+8，分鐘數
@@ -2035,7 +2186,10 @@ async function handleCheckDailyFortune(body, supabase) {
   
   const todayStr = todayTaiwanMidnight.toISOString();
   const tomorrowStr = tomorrowTaiwanMidnight.toISOString();
-
+  
+  console.log('📅 台灣時間:', taiwanTime.toISOString());
+  console.log('📅 查詢日期範圍:', todayStr, '~', tomorrowStr);
+  
   // 查詢今天是否有抽籤記錄 (使用 result 和 draw_date 欄位)
   const fortuneUrl = `${supabase.url}/rest/v1/lottery?user_id=eq.${userId}&draw_date=gte.${todayStr}&draw_date=lt.${tomorrowStr}&select=result,draw_date,created_at`;
   const fortuneResp = await fetch(fortuneUrl, {
@@ -2052,40 +2206,45 @@ async function handleCheckDailyFortune(body, supabase) {
   }
   
   const fortune = await fortuneResp.json();
-
+  console.log('📊 查詢結果:', fortune);
+  
   if (fortune && fortune.length > 0) {
-
+    console.log('✅ 今天已抽過:', fortune[0].result);
     return {
       success: true,
-      canDraw: false,  // 已經抽過了，不能再抽
       hasDrawn: true,
       lastResult: fortune[0].result
     };
   }
-
+  
+  console.log('✅ 今天還沒抽過');
   return {
     success: true,
-    canDraw: true,  // 今天還沒抽，可以抽
     hasDrawn: false
   };
 }
 
 async function handleSaveDailyFortune(body, supabase) {
   const { phone, nickname, result } = body;
-
+  
+  console.log('📝 saveDailyFortune - phone:', phone, 'result:', result);
+  
   const users = await supabase.query('users', { eq: { phone } });
   if (!users || users.length === 0) {
-
+    console.log('❌ 找不到用戶:', phone);
     return { success: false, message: '找不到用戶' };
   }
   
   const userId = users[0].id;
-
+  console.log('✅ 找到用戶 ID:', userId);
+  
   // 🔧 使用台灣時間 (UTC+8)
   const now = new Date();
   const taiwanOffset = 8 * 60; // 台灣 UTC+8，分鐘數
   const taiwanTime = new Date(now.getTime() + taiwanOffset * 60 * 1000);
-
+  
+  console.log('📅 台灣時間:', taiwanTime.toISOString());
+  
   // 使用新的表結構：result (運勢結果), draw_date (抽籤時間), status (狀態)
   const lotteryRecord = {
     user_id: userId,
@@ -2093,10 +2252,13 @@ async function handleSaveDailyFortune(body, supabase) {
     draw_date: taiwanTime.toISOString(),  // 使用台灣時間
     status: '已完成'
   };
-
+  
+  console.log('💾 準備插入記錄:', lotteryRecord);
+  
   try {
     const insertResult = await supabase.insert('lottery', [lotteryRecord]);
-
+    console.log('✅ 插入結果:', insertResult);
+    
     // 檢查是否有錯誤
     if (insertResult && insertResult.error) {
       console.error('❌ 插入時發生錯誤:', insertResult.error);
@@ -2195,15 +2357,17 @@ async function handleCreateEcpayPayment(body, supabase) {
     }
     
     // 先查詢使用者ID（根據phone）- 這必須先做，因為後面需要 user_id
-
+    console.log('[ECPay] 查詢使用者:', phone);
     const users = await supabase.query('users', { eq: { phone: phone } });
-
+    console.log('[ECPay] 查詢結果:', users);
+    
     if (!Array.isArray(users) || users.length === 0) {
       console.error('[ECPay] 找不到該電話號碼的使用者:', phone);
       return { success: false, message: '找不到該使用者，請先登入' };
     }
     const userId = users[0].id;
-
+    console.log('[ECPay] 找到使用者:', userId);
+    
     // 產生訂單編號
     const merchantTradeNo = 'NC' + Date.now();
     
@@ -2218,7 +2382,9 @@ async function handleCreateEcpayPayment(body, supabase) {
     const minutes = String(localTime.getUTCMinutes()).padStart(2, '0');
     const seconds = String(localTime.getUTCSeconds()).padStart(2, '0');
     const tradeDate = `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
-
+    
+    console.log('[ECPay] 產生交易時間:', tradeDate, '(GMT+8)');
+    
     // 組合綠界參數
     const ecpayParams = {
       MerchantID: ECPAY_CONFIG.MerchantID,
@@ -2235,11 +2401,15 @@ async function handleCreateEcpayPayment(body, supabase) {
       CustomField2: (orderIds || []).join(','),
       ClientBackURL: 'https://supabasedemo-dnd.pages.dev/'  // 客戶返回商店首頁
     };
-
+    
+    console.log('[ECPay] 組合參數完成，準備生成 CheckMacValue');
+    
     // 生成 CheckMacValue (非同步)
     const checkMacValue = await generateEcpayCheckMacValueAsync(ecpayParams);
     ecpayParams.CheckMacValue = checkMacValue;
-
+    
+    console.log('[ECPay] CheckMacValue 生成完成:', checkMacValue.substring(0, 20) + '...');
+    
     // 儲存付款記錄到 ecpay_records 表（使用重新命名後的欄位名）
     const paymentRecord = {
       merchant_trade_no: merchantTradeNo,
@@ -2253,11 +2423,15 @@ async function handleCreateEcpayPayment(body, supabase) {
       trade_date: new Date().toISOString(),
       created_at: new Date().toISOString()
     };
-
+    
+    console.log('[ECPay] 儲存付款記錄到資料庫...');
+    console.log('[ECPay] 記錄:', paymentRecord);
+    
     try {
       // 使用 fetch 直接插入，比 supabase.insert() 更可靠
       const insertUrl = `${supabase.url}/rest/v1/ecpay_records`;
-
+      console.log('[ECPay] 插入 URL:', insertUrl);
+      
       const insertResponse = await fetch(insertUrl, {
         method: 'POST',
         headers: {
@@ -2268,11 +2442,15 @@ async function handleCreateEcpayPayment(body, supabase) {
         },
         body: JSON.stringify(paymentRecord)
       });
-
+      
+      console.log('[ECPay] 插入 HTTP 狀態:', insertResponse.status);
+      
       const insertResult = await insertResponse.json();
-
+      console.log('[ECPay] 插入結果類型:', typeof insertResult);
+      console.log('[ECPay] 插入結果:', JSON.stringify(insertResult).substring(0, 500));
+      
       if (insertResponse.ok) {
-
+        console.log('[ECPay] ✅ 付款記錄已成功儲存到 ecpay_records 表');
       } else {
         console.error('[ECPay] ⚠️ 插入失敗，HTTP ' + insertResponse.status, insertResult);
       }
@@ -2280,7 +2458,9 @@ async function handleCreateEcpayPayment(body, supabase) {
       console.error('[ECPay] ⚠️ 資料庫異常:', dbError.message || JSON.stringify(dbError));
       // 不要 return，繼續生成付款表單
     }
-
+    
+    console.log('[ECPay] ✅ 準備返回支付參數');
+    
     return {
       success: true,
       paymentUrl: ECPAY_CONFIG.PaymentURL,
@@ -2296,10 +2476,13 @@ async function handleCreateEcpayPayment(body, supabase) {
 
 async function handleCheckPaymentStatus(body, supabase) {
   const { merchantTradeNo } = body;
-
+  
+  console.log('[Payment] 查詢支付狀態:', merchantTradeNo);
+  
   // 使用 fetch 直接查詢，比用 supabase.query() 更可靠
   const queryUrl = `${supabase.url}/rest/v1/ecpay_records?merchant_trade_no=eq.${encodeURIComponent(merchantTradeNo)}&select=*`;
-
+  console.log('[Payment] 查詢 URL:', queryUrl);
+  
   const queryResp = await fetch(queryUrl, {
     headers: {
       'apikey': supabase.apiKey,
@@ -2309,7 +2492,8 @@ async function handleCheckPaymentStatus(body, supabase) {
   });
   
   const payment = await queryResp.json();
-
+  console.log('[Payment] 查詢結果:', Array.isArray(payment) ? payment.length + '筆' : JSON.stringify(payment).substring(0, 200));
+  
   if (payment && Array.isArray(payment) && payment.length > 0) {
     const record = payment[0];
     
@@ -2376,14 +2560,16 @@ async function handleUpdateOrderStatusToPending(body, supabase) {
               });
               
               updatedCount++;
-
+              console.log('[UPDATE_ORDER] ✅ 已更新訂單:', item, cardNo, '狀態 -> 付款確認中');
               break;
             }
           }
         }
       }
     }
-
+    
+    console.log('[UPDATE_ORDER] 完成！成功更新 ' + updatedCount + '/' + orderDetails.length + ' 筆');
+    
     return {
       success: true,
       message: '已更新 ' + updatedCount + ' 筆訂單狀態為「付款確認中」',
@@ -2399,7 +2585,14 @@ async function handleUpdateOrderStatusToPending(body, supabase) {
 async function handleUpdateBreakStatusToPending(body, supabase) {
   const { breakDetails, orderDetails, merchantTradeNo } = body;
   const details = breakDetails || orderDetails;
-
+  
+  console.log('═══════════════════════════════════════════');
+  console.log('[UPDATE_BREAK] 🚀 函數開始執行');
+  console.log('[UPDATE_BREAK] 接收到的 body:', JSON.stringify(body));
+  console.log('[UPDATE_BREAK] breakDetails:', breakDetails);
+  console.log('[UPDATE_BREAK] orderDetails:', orderDetails);
+  console.log('═══════════════════════════════════════════');
+  
   if (!details || details.length === 0) {
     return { success: false, message: '缺少團拆明細' };
   }
@@ -2408,11 +2601,20 @@ async function handleUpdateBreakStatusToPending(body, supabase) {
   const matchDetails = [];
   
   try {
-
+    console.log('[UPDATE_BREAK] 開始更新團拆狀態，共 ' + details.length + ' 筆');
+    
     // 遍歷每筆團拆明細，更新狀態為「付款確認中」
     for (const detail of details) {
       const { nickname, phone, breakId, userId: detailUserId } = detail;
-
+      
+      console.log('───────────────────────────────────────────');
+      console.log('[UPDATE_BREAK] 處理第' + (details.indexOf(detail) + 1) + '筆');
+      console.log('[UPDATE_BREAK] detail 完整內容:', JSON.stringify(detail));
+      console.log('[UPDATE_BREAK] 🔥 detail 的所有 keys:', Object.keys(detail).join(','));
+      console.log('[UPDATE_BREAK] 解析結果: userId=' + detailUserId + ', breakId=' + breakId + ', nickname=' + nickname);
+      console.log('[UPDATE_BREAK] 🔥 detail.userId (直接訪問):', detail.userId);
+      console.log('───────────────────────────────────────────');
+      
       if (!breakId) {
         console.warn('[UPDATE_BREAK] ⚠️ 缺少 breakId');
         matchDetails.push({ breakId, nickname, matched: false, reason: '缺少 breakId' });
@@ -2428,12 +2630,14 @@ async function handleUpdateBreakStatusToPending(body, supabase) {
         matchDetails.push({ breakId, nickname, matched: false, reason: 'userId 為空 - 前端未傳遞' });
         continue;
       }
-
+      
+      console.log('[UPDATE_BREAK] 🔥 使用 userId 進行精確匹配: ' + userId);
       let phoneQueryResult = null;
       
       // 直接用 userId + breakId 進行精確查詢
       const breaksUrl = `${supabase.url}/rest/v1/breaks?select=id,break_id,user_id,name,status&break_id=eq.${encodeURIComponent(breakId)}&user_id=eq.${encodeURIComponent(userId)}`;
-
+      console.log('[UPDATE_BREAK] 查詢 URL:', breaksUrl);
+      
       const breaksResp = await fetch(breaksUrl, {
         headers: {
           'apikey': supabase.apiKey,
@@ -2441,12 +2645,14 @@ async function handleUpdateBreakStatusToPending(body, supabase) {
         }
       });
       const breaks = await breaksResp.json();
-
+      
+      console.log('[UPDATE_BREAK] 查詢結果:', Array.isArray(breaks) ? breaks.length + ' 筆' : '非陣列或錯誤', JSON.stringify(breaks));
+      
       if (!Array.isArray(breaks) || breaks.length === 0) {
         console.warn('[UPDATE_BREAK] ❌ 用戶+break_id 精確匹配失敗:', { breakId, userId, nickname });
         
         // 🔍 追加診斷：查詢所有該用戶的團拆
-
+        console.log('[UPDATE_BREAK] 🔍 診斷：查詢該用戶的所有團拆...');
         const allBreaksUrl = `${supabase.url}/rest/v1/breaks?select=id,break_id,user_id,name,status&user_id=eq.${encodeURIComponent(userId)}`;
         const allBreaksResp = await fetch(allBreaksUrl, {
           headers: {
@@ -2455,15 +2661,15 @@ async function handleUpdateBreakStatusToPending(body, supabase) {
           }
         });
         const allBreaks = await allBreaksResp.json();
-
+        console.log('[UPDATE_BREAK] 🔍 該用戶有 ' + (Array.isArray(allBreaks) ? allBreaks.length : 0) + ' 個團拆');
         if (Array.isArray(allBreaks) && allBreaks.length > 0) {
           allBreaks.forEach((b, i) => {
-
+            console.log('[UPDATE_BREAK] 🔍 [' + i + '] break_id=' + b.break_id + ', id=' + b.id + ', name=' + b.name);
           });
         }
         
         // 🔍 再查詢：所有該 break_id 的團拆（不限 user_id）
-
+        console.log('[UPDATE_BREAK] 🔍 診斷：查詢所有 break_id=' + breakId + ' 的團拆...');
         const allBreaksByIdUrl = `${supabase.url}/rest/v1/breaks?select=id,break_id,user_id,name,status&break_id=eq.${encodeURIComponent(breakId)}`;
         const allBreaksByIdResp = await fetch(allBreaksByIdUrl, {
           headers: {
@@ -2472,10 +2678,10 @@ async function handleUpdateBreakStatusToPending(body, supabase) {
           }
         });
         const allBreaksById = await allBreaksByIdResp.json();
-
+        console.log('[UPDATE_BREAK] 🔍 共有 ' + (Array.isArray(allBreaksById) ? allBreaksById.length : 0) + ' 個團拆擁有 break_id=' + breakId);
         if (Array.isArray(allBreaksById) && allBreaksById.length > 0) {
           allBreaksById.forEach((b, i) => {
-
+            console.log('[UPDATE_BREAK] 🔍 [' + i + '] user_id=' + b.user_id + ', id=' + b.id + ', name=' + b.name + ', status=' + b.status);
           });
         }
         
@@ -2509,10 +2715,12 @@ async function handleUpdateBreakStatusToPending(body, supabase) {
       }
       
       updatedCount++;
-
+      console.log('[UPDATE_BREAK] ✅ 已更新:', breakId, nickname, '原狀態:', breakRecord.status, '新狀態: 付款確認中');
       matchDetails.push({ breakId, nickname, matched: true, oldStatus: breakRecord.status });
     }
-
+    
+    console.log('[UPDATE_BREAK] 完成！成功更新 ' + updatedCount + '/' + details.length + ' 筆');
+    
     return {
       success: true,
       message: '已更新 ' + updatedCount + ' 筆團拆狀態為「付款確認中」',
@@ -2545,7 +2753,9 @@ async function handleUpdateOrderStatusToFailed(body, supabase) {
           console.warn('[UPDATE_ORDER_FAILED] ⚠️ 訂單缺少 ID');
           continue;
         }
-
+        
+        console.log('[UPDATE_ORDER_FAILED] 準備更新訂單 ' + id + ' 為「付款失敗」');
+        
         // 直接用 ID 更新訂單
         const updateUrl = `${supabase.url}/rest/v1/orders?id=eq.${id}`;
         const patchResp = await fetch(updateUrl, {
@@ -2563,7 +2773,7 @@ async function handleUpdateOrderStatusToFailed(body, supabase) {
         
         if (patchResp.ok) {
           updatedCount++;
-
+          console.log('[UPDATE_ORDER_FAILED] ✅ 訂單 ' + id + ' 已更新為「付款失敗」');
         } else {
           console.error('[UPDATE_ORDER_FAILED] ❌ 更新訂單 ' + id + ' 失敗: HTTP ' + patchResp.status);
         }
@@ -2577,7 +2787,10 @@ async function handleUpdateOrderStatusToFailed(body, supabase) {
           console.warn('[UPDATE_BREAK_FAILED] ⚠️ 團拆缺少 breakId');
           continue;
         }
-
+        
+        console.log('[UPDATE_BREAK_FAILED] 準備更新團拆 ' + breakId + ' 為「付款失敗」，暱稱:', nickname);
+        console.log('[UPDATE_BREAK_FAILED] 🔥 detail 內容:', JSON.stringify(detail));
+        
         // 🔥 優先使用 userId 直接匹配（最可靠的方法）
         let userId = detailUserId;
         
@@ -2586,7 +2799,9 @@ async function handleUpdateOrderStatusToFailed(body, supabase) {
           console.error('[UPDATE_BREAK_FAILED] detail:', JSON.stringify(detail));
           continue;
         }
-
+        
+        console.log('[UPDATE_BREAK_FAILED] 🔥 使用 userId 進行精確匹配: ' + userId);
+        
         // 直接用 userId + breakId 進行精確查詢
         const breaksUrl = `${supabase.url}/rest/v1/breaks?select=id,break_id,user_id,status&break_id=eq.${encodeURIComponent(breakId)}&user_id=eq.${encodeURIComponent(userId)}`;
         const breaksResp = await fetch(breaksUrl, {
@@ -2596,11 +2811,13 @@ async function handleUpdateOrderStatusToFailed(body, supabase) {
           }
         });
         const breaks = await breaksResp.json();
-
+        
+        console.log('[UPDATE_BREAK_FAILED] 查詢結果:', Array.isArray(breaks) ? breaks.length + ' 筆' : '非陣列或錯誤');
+        
         let breakRecord = null;
         if (Array.isArray(breaks) && breaks.length > 0) {
           breakRecord = breaks[0];
-
+          console.log('[UPDATE_BREAK_FAILED] ✅ 精確匹配找到團拆:', breakRecord.id);
         } else {
           console.error('[UPDATE_BREAK_FAILED] ❌ 用戶+break_id 精確匹配失敗:', { breakId, userId, nickname });
         }
@@ -2627,13 +2844,15 @@ async function handleUpdateOrderStatusToFailed(body, supabase) {
         
         if (patchResp.ok) {
           updatedCount++;
-
+          console.log('[UPDATE_BREAK_FAILED] ✅ 團拆 ' + breakId + ' 已更新為「付款失敗」');
         } else {
           console.error('[UPDATE_BREAK_FAILED] ❌ 更新團拆 ' + breakId + ' 失敗: HTTP ' + patchResp.status);
         }
       }
     }
-
+    
+    console.log('[UPDATE_FAILED] 完成！成功更新 ' + updatedCount + '/' + orderDetails.length + ' 筆');
+    
     return {
       success: true,
       message: '已更新 ' + updatedCount + ' 筆' + (paymentType === 'order' ? '訂單' : '團拆') + '狀態為「付款失敗」',
@@ -2650,7 +2869,8 @@ async function handleVerifyData(body, supabase) {
   const results = {};
   
   try {
-
+    console.log('[VERIFY] Starting data verification...');
+    
     // 1. 檢查所有資料表筆數
     const tables = [
       'users',
@@ -2667,7 +2887,7 @@ async function handleVerifyData(body, supabase) {
     for (const table of tables) {
       const data = await supabase.query(table, {});
       results.tableCounts[table] = Array.isArray(data) ? data.length : 0;
-
+      console.log('[VERIFY] ' + table + ': ' + results.tableCounts[table] + ' rows');
     }
     
     // 2. 檢查 users 範例
@@ -2745,7 +2965,9 @@ async function handleVerifyData(body, supabase) {
         order_date: o.order_date
       })) : []
     };
-
+    
+    console.log('[VERIFY] Verification completed successfully');
+    
     return {
       success: true,
       timestamp: new Date().toISOString(),
@@ -2787,16 +3009,19 @@ export default {
         
         let params = {};
         const contentType = request.headers.get('content-type') || '';
-
+        
+        console.log('[ECPay Callback] Content-Type:', contentType);
+        
         // 綠界回調總是用 form-urlencoded
         if (contentType.includes('application/x-www-form-urlencoded')) {
           const text = await request.text();
-
+          console.log('[ECPay Callback] 收到原始文本:', text.substring(0, 100));
+          
           const formData = new URLSearchParams(text);
           for (const [key, value] of formData.entries()) {
             params[key] = value;
           }
-
+          console.log('[ECPay Callback] 解析後參數數量:', Object.keys(params).length);
         } else if (contentType.includes('application/json')) {
           // 備用：如果是 JSON 格式
           params = await request.json();
@@ -2810,7 +3035,9 @@ export default {
             }
           }
         }
-
+        
+        console.log('[ECPay Callback] 開始處理回調');
+        
         const result = await handleEcpayCallback(params, supabase);
         
         return new Response(JSON.stringify(result), {
@@ -2882,7 +3109,9 @@ async function handleGetNotifications(body, supabase) {
               .split('||')
               .filter(id => id && id.trim())
               .map(id => id.trim());
-
+            
+            console.log('[getNotifications] 通知 ID:', notif.id, '找到團拆 ID:', breakIds);
+            
             if (breakIds.length > 0) {
               try {
                 // 🔥 使用 break_id + user_id 查詢團拆（重點：加上user_id過濾以區分不同用戶的同名團拆！）
@@ -2890,7 +3119,9 @@ async function handleGetNotifications(body, supabase) {
                 
                 const breaksResponse = await fetch(breakQueryUrl, { headers });
                 relatedBreaks = await breaksResponse.json();
-
+                
+                console.log('[getNotifications] 團拆查詢結果:', relatedBreaks, '(user_id:', notif.user_id, ')');
+                
                 if (!Array.isArray(relatedBreaks)) {
                   relatedBreaks = [];
                 }
@@ -2908,16 +3139,22 @@ async function handleGetNotifications(body, supabase) {
               .split('||')
               .filter(id => id && id.trim())
               .map(id => id.trim());
-
+            
+            console.log('[getNotifications] 通知 ID:', notif.id, '找到訂單 ID:', selectedOrderIds);
+            
             if (selectedOrderIds && selectedOrderIds.length > 0) {
               try {
                 // 查詢這些特定的訂單
                 const orderIdsStr = selectedOrderIds.join(',');
                 const ordersUrl = `${supabase.url}/rest/v1/orders?id=in.(${orderIdsStr})`;
-
+                
+                console.log('[getNotifications] 查詢 URL:', ordersUrl);
+                
                 const ordersResponse = await fetch(ordersUrl, { headers });
                 relatedOrders = await ordersResponse.json();
-
+                
+                console.log('[getNotifications] 訂單查詢結果:', relatedOrders);
+                
                 if (!Array.isArray(relatedOrders)) {
                   relatedOrders = [];
                 }
@@ -3014,7 +3251,9 @@ async function handleDeleteNotification(body, supabase) {
 
 async function handleSearchOrders(body, supabase) {
   const { phone, nickname, item, limit = 50, offset = 0 } = body;
-
+  
+  console.log('[handleSearchOrders] 搜尋參數:', { phone, nickname, item });
+  
   try {
     // 先查詢所有訂單
     let queryUrl = `${supabase.url}/rest/v1/orders?select=*&order=timestamp.desc&limit=1000`;
@@ -3026,45 +3265,55 @@ async function handleSearchOrders(body, supabase) {
     
     const response = await fetch(queryUrl, { headers });
     const allOrders = await response.json();
-
+    
+    console.log('[handleSearchOrders] 找到 ' + (Array.isArray(allOrders) ? allOrders.length : 0) + ' 筆訂單');
+    
     if (!Array.isArray(allOrders)) {
       return { success: true, orders: [], count: 0 };
     }
     
-    // 🔑 無論什麼搜尋條件，都要 JOIN 用戶資料，以顯示訂購者資訊
-    // 查詢所有用戶
-    const userQueryUrl = `${supabase.url}/rest/v1/users?select=*&limit=1000`;
-    const userResponse = await fetch(userQueryUrl, { headers });
-    const allUsers = await userResponse.json();
-    const userMap = new Map();
+    // 如果需要按 phone 或 nickname 搜尋，需要 JOIN 用戶資料
+    let filtered = allOrders;
     
-    if (Array.isArray(allUsers)) {
-      allUsers.forEach(u => {
-        userMap.set(u.id, u);
-      });
-    }
-
-    // 用戶端 JOIN：為訂單添加用戶信息
-    let filtered = allOrders.map(o => ({
-      ...o,
-      nickname: userMap.get(o.user_id)?.nickname || o.nickname || '',
-      phone: userMap.get(o.user_id)?.phone || o.phone || ''
-    }));
-    
-    // 按 phone 或 nickname 過濾
-    if (phone) {
-      filtered = filtered.filter(o => o.phone && o.phone.toString().includes(phone.toString()));
-    }
-    
-    if (nickname) {
-      filtered = filtered.filter(o => o.nickname && o.nickname.toLowerCase().includes(nickname.toLowerCase()));
+    if (phone || nickname) {
+      // 查詢所有用戶
+      const userQueryUrl = `${supabase.url}/rest/v1/users?select=*&limit=1000`;
+      const userResponse = await fetch(userQueryUrl, { headers });
+      const allUsers = await userResponse.json();
+      const userMap = new Map();
+      
+      if (Array.isArray(allUsers)) {
+        allUsers.forEach(u => {
+          userMap.set(u.id, u);
+        });
+      }
+      
+      console.log('[handleSearchOrders] 載入 ' + userMap.size + ' 個用戶資料');
+      
+      // 用戶端 JOIN：為訂單添加用戶信息
+      filtered = filtered.map(o => ({
+        ...o,
+        nickname: userMap.get(o.user_id)?.nickname || o.nickname || '',
+        phone: userMap.get(o.user_id)?.phone || o.phone || ''
+      }));
+      
+      // 按 phone 或 nickname 過濾
+      if (phone) {
+        filtered = filtered.filter(o => o.phone && o.phone.toString().includes(phone.toString()));
+      }
+      
+      if (nickname) {
+        filtered = filtered.filter(o => o.nickname && o.nickname.toLowerCase().includes(nickname.toLowerCase()));
+      }
     }
     
     // 按 item 過濾
     if (item) {
       filtered = filtered.filter(o => o.item && o.item.toLowerCase().includes(item.toLowerCase()));
     }
-
+    
+    console.log('[handleSearchOrders] 過濾後找到 ' + filtered.length + ' 筆訂單');
+    
     return { 
       success: true, 
       orders: filtered.slice(offset, offset + limit),
@@ -3078,7 +3327,9 @@ async function handleSearchOrders(body, supabase) {
 
 async function handleSearchUsers(body, supabase) {
   const { phone, nickname, limit = 50, offset = 0 } = body;
-
+  
+  console.log('[handleSearchUsers] 搜尋參數:', { phone, nickname });
+  
   try {
     // 查詢所有用戶
     const queryUrl = `${supabase.url}/rest/v1/users?select=*&limit=1000`;
@@ -3090,7 +3341,9 @@ async function handleSearchUsers(body, supabase) {
     
     const response = await fetch(queryUrl, { headers });
     const allUsers = await response.json();
-
+    
+    console.log('[handleSearchUsers] 找到 ' + (Array.isArray(allUsers) ? allUsers.length : 0) + ' 個用戶');
+    
     if (!Array.isArray(allUsers)) {
       return { success: true, users: [], count: 0 };
     }
@@ -3105,7 +3358,9 @@ async function handleSearchUsers(body, supabase) {
     if (nickname) {
       filtered = filtered.filter(u => u.nickname && u.nickname.toLowerCase().includes(nickname.toLowerCase()));
     }
-
+    
+    console.log('[handleSearchUsers] 過濾後找到 ' + filtered.length + ' 個用戶');
+    
     // 去重（以 id 為基準）
     const uniqueUsers = Array.from(new Map(filtered.map(u => [u.id, u])).values());
     
@@ -3122,7 +3377,7 @@ async function handleSearchUsers(body, supabase) {
 
 async function handleUpdateOrder(body, supabase) {
   try {
-    const { id, status, balance, balance_amount, notes, manual_price, user_id } = body;
+    const { id, status, balance, balance_amount, notes, manual_price } = body;
     
     const updateData = {};
     if (status) updateData.status = status;
@@ -3131,10 +3386,10 @@ async function handleUpdateOrder(body, supabase) {
     if (balance_amount !== undefined) updateData.balance_amount = balance_amount;
     if (notes) updateData.notes = notes;
     if (manual_price !== undefined) updateData.remark = manual_price; // 使用 remark 欄位存儲手動調價標記
-    // 👤 支持更新客戶（用於轉讓訂單）
-    if (user_id) updateData.user_id = user_id;
     updateData.updated_at = new Date().toISOString();
-
+    
+    console.log('[handleUpdateOrder] 更新訂單:', { id, ...updateData });
+    
     const updateUrl = `${supabase.url}/rest/v1/orders?id=eq.${id}`;
     
     const response = await fetch(updateUrl, {
@@ -3147,10 +3402,13 @@ async function handleUpdateOrder(body, supabase) {
       },
       body: JSON.stringify(updateData)
     });
-
+    
+    console.log('[handleUpdateOrder] HTTP 狀態:', response.status);
+    
     let result = [];
     const responseText = await response.text();
-
+    console.log('[handleUpdateOrder] 原始回應:', responseText);
+    
     // 只有當回應不為空時才解析 JSON
     if (responseText && responseText.trim()) {
       try {
@@ -3162,7 +3420,7 @@ async function handleUpdateOrder(body, supabase) {
     }
     
     if (response.ok) {
-
+      console.log('[handleUpdateOrder] ✅ 更新成功，返回:', result);
       // 返回更新後的訂單（Supabase 在 Prefer: return=representation 時會返回陣列）
       const updatedOrder = Array.isArray(result) && result.length > 0 ? result[0] : result;
       return { 
@@ -3430,7 +3688,9 @@ async function handleUpdateProduct(body, supabase) {
             const product = products[0];
             const itemName = product.item_name;
             const cardNo = product.card_no;
-
+            
+            console.log('[UPDATE_PRODUCT] Cascading arrival status to orders:', { itemName, cardNo });
+            
             // 更新訂單的到貨狀態
             const ordersUpdateUrl = `${supabase.url}/rest/v1/orders?item=eq.${encodeURIComponent(itemName)}&card_no=eq.${encodeURIComponent(cardNo)}`;
             const ordersUpdateRes = await fetch(ordersUpdateUrl, {
@@ -3444,7 +3704,7 @@ async function handleUpdateProduct(body, supabase) {
             });
             
             if (ordersUpdateRes.ok) {
-
+              console.log('[UPDATE_PRODUCT] Orders arrival status updated successfully');
             } else {
               const errorText = await ordersUpdateRes.text();
               console.error('[UPDATE_PRODUCT] Failed to update orders arrival status:', errorText);
@@ -3498,7 +3758,8 @@ async function handleCleanupDuplicateUsers(body, supabase) {
   }
   
   try {
-
+    console.log('[cleanupDuplicateUsers] 開始清理 password 為 NULL 的重複用戶...');
+    
     const headers = {
       'apikey': supabase.apiKey,
       'Authorization': `Bearer ${supabase.apiKey}`,
@@ -3509,7 +3770,9 @@ async function handleCleanupDuplicateUsers(body, supabase) {
     const queryUrl = `${supabase.url}/rest/v1/users?select=id,phone,password&password=is.null&limit=1000`;
     const response = await fetch(queryUrl, { headers });
     const nullPasswordUsers = await response.json();
-
+    
+    console.log('[cleanupDuplicateUsers] 找到 ' + (Array.isArray(nullPasswordUsers) ? nullPasswordUsers.length : 0) + ' 個 password 為 NULL 的用戶');
+    
     if (!Array.isArray(nullPasswordUsers) || nullPasswordUsers.length === 0) {
       return { success: true, message: '沒有需要清理的用戶', deletedUsers: 0, deletedShipments: 0 };
     }
@@ -3520,7 +3783,7 @@ async function handleCleanupDuplicateUsers(body, supabase) {
     const inClause = idsToDelete.join(',');
     
     // 刪除 shipments 記錄
-
+    console.log('[cleanupDuplicateUsers] 刪除相關 shipments 記錄...');
     const deleteShipmentsUrl = `${supabase.url}/rest/v1/shipments?user_id=in.(${inClause})`;
     const deleteShipmentsResponse = await fetch(deleteShipmentsUrl, {
       method: 'DELETE',
@@ -3531,7 +3794,7 @@ async function handleCleanupDuplicateUsers(body, supabase) {
     if (deleteShipmentsResponse.ok) {
       const contentRange = deleteShipmentsResponse.headers.get('content-range');
       deletedShipments = contentRange ? parseInt(contentRange.split('/')[1]) : 0;
-
+      console.log('[cleanupDuplicateUsers] 已刪除 ' + deletedShipments + ' 個 shipments 記錄');
     } else {
       const errorText = await deleteShipmentsResponse.text();
       console.error('[cleanupDuplicateUsers] 刪除 shipments 失敗:', errorText);
@@ -3539,7 +3802,7 @@ async function handleCleanupDuplicateUsers(body, supabase) {
     }
     
     // 刪除 lottery 記錄
-
+    console.log('[cleanupDuplicateUsers] 刪除相關 lottery 記錄...');
     const deleteLotteryUrl = `${supabase.url}/rest/v1/lottery?user_id=in.(${inClause})`;
     const deleteLotteryResponse = await fetch(deleteLotteryUrl, {
       method: 'DELETE',
@@ -3550,14 +3813,14 @@ async function handleCleanupDuplicateUsers(body, supabase) {
     if (deleteLotteryResponse.ok) {
       const contentRange = deleteLotteryResponse.headers.get('content-range');
       deletedLottery = contentRange ? parseInt(contentRange.split('/')[1]) : 0;
-
+      console.log('[cleanupDuplicateUsers] 已刪除 ' + deletedLottery + ' 個 lottery 記錄');
     } else {
       const errorText = await deleteLotteryResponse.text();
       console.warn('[cleanupDuplicateUsers] 刪除 lottery 記錄失敗（可能不存在此表）:', errorText);
     }
     
     // 刪除 notifications 記錄
-
+    console.log('[cleanupDuplicateUsers] 刪除相關 notifications 記錄...');
     const deleteNotificationsUrl = `${supabase.url}/rest/v1/notifications?user_id=in.(${inClause})`;
     const deleteNotificationsResponse = await fetch(deleteNotificationsUrl, {
       method: 'DELETE',
@@ -3568,14 +3831,14 @@ async function handleCleanupDuplicateUsers(body, supabase) {
     if (deleteNotificationsResponse.ok) {
       const contentRange = deleteNotificationsResponse.headers.get('content-range');
       deletedNotifications = contentRange ? parseInt(contentRange.split('/')[1]) : 0;
-
+      console.log('[cleanupDuplicateUsers] 已刪除 ' + deletedNotifications + ' 個 notifications 記錄');
     } else {
       const errorText = await deleteNotificationsResponse.text();
       console.warn('[cleanupDuplicateUsers] 刪除 notifications 記錄失敗:', errorText);
     }
     
     // 第三步：刪除所有 password 為 NULL 的用戶（一次性）
-
+    console.log('[cleanupDuplicateUsers] 刪除用戶...');
     const deleteUsersUrl = `${supabase.url}/rest/v1/users?id=in.(${inClause})`;
     const deleteUsersResponse = await fetch(deleteUsersUrl, {
       method: 'DELETE',
@@ -3589,7 +3852,8 @@ async function handleCleanupDuplicateUsers(body, supabase) {
     }
     
     const deletedUsers = idsToDelete.length;
-
+    console.log('[cleanupDuplicateUsers] 清理完成，共刪除 ' + deletedUsers + ' 個用戶和 ' + deletedShipments + ' 個出貨記錄');
+    
     return { 
       success: true, 
       message: '清理完成！已刪除 ' + deletedUsers + ' 個重複用戶和 ' + deletedShipments + ' 個相關出貨記錄',
@@ -3606,7 +3870,8 @@ async function handleCleanupDuplicateUsers(body, supabase) {
 
 async function handleGetAllBreaks(body, supabase) {
   try {
-
+    console.log('[getAllBreaks] 查詢所有團拆（含用戶信息）');
+    
     const headers = {
       'apikey': supabase.apiKey,
       'Authorization': `Bearer ${supabase.apiKey}`,
@@ -3623,7 +3888,9 @@ async function handleGetAllBreaks(body, supabase) {
       console.error('[getAllBreaks] 查詢結果非陣列:', breaksData);
       return { success: false, message: '查詢失敗' };
     }
-
+    
+    console.log('[getAllBreaks] 共找到 ' + breaksData.length + ' 筆團拆');
+    
     // 格式化數據，將 user_id 替換為用戶信息
     const formattedBreaks = breaksData.map(b => ({
       ...b,
@@ -3643,22 +3910,21 @@ async function handleGetAllBreaks(body, supabase) {
 }
 
 async function handleUpdateBreak(body, supabase) {
-  const { id, status, paid, item, is_opened, is_shipped, user_id } = body;
+  const { id, status, paid, item, is_opened, is_shipped } = body;
   
   if (!id) {
     return { success: false, message: '缺少團拆 ID' };
   }
   
   try {
-
+    console.log('[updateBreak] 更新團拆 ID: ' + id, '狀態:', status, '已付金額:', paid, '購買品項:', item, '已拆:', is_opened, '已寄出:', is_shipped);
+    
     const updateData = {};
     if (status !== undefined) updateData.status = status;
     if (paid !== undefined) updateData.paid = parseFloat(paid);
     if (item !== undefined) updateData.item = item;
     if (is_opened !== undefined) updateData.is_opened = is_opened;
     if (is_shipped !== undefined) updateData.is_shipped = is_shipped;
-    // 👤 支持更新客戶（用於轉讓團拆）
-    if (user_id) updateData.user_id = user_id;
     
     if (Object.keys(updateData).length === 0) {
       return { success: false, message: '沒有要更新的欄位' };
@@ -3676,7 +3942,9 @@ async function handleUpdateBreak(body, supabase) {
       },
       body: JSON.stringify(updateData)
     });
-
+    
+    console.log('[updateBreak] HTTP 狀態:', response.status);
+    
     if (!response.ok) {
       const errorText = await response.text();
       console.error('[updateBreak] HTTP 錯誤:', response.status, errorText);
@@ -3685,7 +3953,8 @@ async function handleUpdateBreak(body, supabase) {
     
     let result = [];
     const responseText = await response.text();
-
+    console.log('[updateBreak] 原始回應:', responseText);
+    
     // 🔑 只有當回應不為空時才解析 JSON
     if (responseText && responseText.trim()) {
       try {
@@ -3695,7 +3964,9 @@ async function handleUpdateBreak(body, supabase) {
         result = [];
       }
     }
-
+    
+    console.log('[updateBreak] 更新成功:', JSON.stringify(updateData), '結果:', JSON.stringify(result));
+    
     return { 
       success: true, 
       message: '團拆已更新',
@@ -3721,7 +3992,8 @@ async function handleAddBreaksBatch(body, supabase) {
   }
 
   try {
-
+    console.log('[addBreaksBatch] 開始批次新增，總數:', breaks.length);
+    
     const results = [];
     const errors = [];
     
@@ -3739,7 +4011,8 @@ async function handleAddBreaksBatch(body, supabase) {
         }
         
         // 根據訂購人名稱查找對應的 user_id
-
+        console.log('[addBreaksBatch] 查詢訂購人:', buyer);
+        
         // 先嘗試精確匹配
         let userQueryUrl = `${supabase.url}/rest/v1/users?select=id,phone,nickname,email`;
         const userResp = await fetch(userQueryUrl, {
@@ -3770,7 +4043,7 @@ async function handleAddBreaksBatch(body, supabase) {
         let userId;
         if (matchedUser) {
           userId = matchedUser.id;
-
+          console.log('[addBreaksBatch] 找到訂購人 user_id:', userId, '名稱:', matchedUser.nickname);
         } else {
           // 顯示所有可用的使用者，方便調試
           const availableUsers = allUsers.map(u => u.nickname).filter(Boolean).join(', ');
@@ -3779,7 +4052,7 @@ async function handleAddBreaksBatch(body, supabase) {
             breakNumber,
             error: `找不到訂購人 "${buyer}"。可用的使用者: ${availableUsers || '(無)'}`
           });
-
+          console.log('[addBreaksBatch] 查詢失敗，輸入:', buyer, '可用使用者:', availableUsers);
           continue;
         }
         
@@ -3805,7 +4078,9 @@ async function handleAddBreaksBatch(body, supabase) {
           is_shipped: false,
           is_cleared: false
         };
-
+        
+        console.log('[addBreaksBatch] 新增資料:', JSON.stringify(newBreak));
+        
         // 新增到資料庫
         const insertUrl = `${supabase.url}/rest/v1/breaks`;
         const insertResp = await fetch(insertUrl, {
@@ -3831,7 +4106,8 @@ async function handleAddBreaksBatch(body, supabase) {
         }
         
         const insertResult = await insertResp.json();
-
+        console.log('[addBreaksBatch] ✅ 新增成功:', buyer, breakNumber);
+        
         results.push({
           buyer,
           breakNumber,
@@ -3848,7 +4124,9 @@ async function handleAddBreaksBatch(body, supabase) {
         });
       }
     }
-
+    
+    console.log('[addBreaksBatch] 完成，成功:', results.length, '失敗:', errors.length);
+    
     return {
       success: errors.length === 0,
       message: `已新增 ${results.length} 筆團拆${errors.length > 0 ? '，' + errors.length + ' 筆失敗' : ''}`,
@@ -3875,7 +4153,8 @@ async function handleDeleteBreak(body, supabase) {
   }
   
   try {
-
+    console.log('[deleteBreak] 刪除團拆 ID:', id);
+    
     const deleteUrl = `${supabase.url}/rest/v1/breaks?id=eq.${id}`;
     
     const response = await fetch(deleteUrl, {
@@ -3886,13 +4165,17 @@ async function handleDeleteBreak(body, supabase) {
         'Content-Type': 'application/json'
       }
     });
-
+    
+    console.log('[deleteBreak] HTTP 狀態:', response.status);
+    
     if (!response.ok) {
       const errorText = await response.text();
       console.error('[deleteBreak] HTTP 錯誤:', response.status, errorText);
       return { success: false, message: '刪除失敗: ' + response.statusText };
     }
-
+    
+    console.log('[deleteBreak] ✅ 刪除成功');
+    
     return { 
       success: true, 
       message: '團拆已刪除'
@@ -3913,7 +4196,8 @@ async function handleDeleteOrder(body, supabase) {
   }
   
   try {
-
+    console.log('[deleteOrder] 刪除訂單 ID:', id);
+    
     const deleteUrl = `${supabase.url}/rest/v1/orders?id=eq.${id}`;
     
     const response = await fetch(deleteUrl, {
@@ -3924,13 +4208,17 @@ async function handleDeleteOrder(body, supabase) {
         'Content-Type': 'application/json'
       }
     });
-
+    
+    console.log('[deleteOrder] HTTP 狀態:', response.status);
+    
     if (!response.ok) {
       const errorText = await response.text();
       console.error('[deleteOrder] HTTP 錯誤:', response.status, errorText);
       return { success: false, message: '刪除失敗: ' + response.statusText };
     }
-
+    
+    console.log('[deleteOrder] ✅ 刪除成功');
+    
     return { 
       success: true, 
       message: '訂單已刪除'
@@ -3945,7 +4233,8 @@ async function handleDeleteOrder(body, supabase) {
 
 async function handleGetAllOrders(body, supabase) {
   try {
-
+    console.log('[getAllOrders] 查詢所有訂單');
+    
     const queryUrl = `${supabase.url}/rest/v1/orders?select=*&order=timestamp.desc&limit=10000`;
     
     const response = await fetch(queryUrl, {
@@ -3992,7 +4281,9 @@ async function handleGetAllOrders(body, supabase) {
       nickname: userMap.get(o.user_id)?.nickname || '未知',
       phone: userMap.get(o.user_id)?.phone || '未知'
     })) : [];
-
+    
+    console.log('[getAllOrders] ✅ 查詢成功，找到 ' + enrichedOrders.length + ' 筆訂單');
+    
     return { 
       success: true, 
       orders: enrichedOrders,
@@ -4065,7 +4356,17 @@ async function SHA256(message) {
  */
 async function handleEcpayCallback(params, supabase) {
   try {
-
+    console.log('[ECPay Callback] 開始處理回調');
+    console.log('[ECPay Callback] 收到參數數量:', Object.keys(params).length);
+    
+    console.log('[ECPay] 回調參數:', {
+      MerchantTradeNo: params.MerchantTradeNo,
+      RtnCode: params.RtnCode,
+      RtnMsg: params.RtnMsg,
+      TradeNo: params.TradeNo,
+      CheckMacValue: params.CheckMacValue ? '已收到' : '缺少'
+    });
+    
     // 檢查必要參數
     if (!params.MerchantTradeNo || !params.RtnCode) {
       console.error('[ECPay] 缺少必要參數');
@@ -4081,24 +4382,34 @@ async function handleEcpayCallback(params, supabase) {
     
     const paramsCopy = { ...params };
     delete paramsCopy.CheckMacValue;
-
+    
+    console.log('[ECPay] 準備驗證 CheckMacValue，參數:', Object.keys(paramsCopy).sort().join(','));
+    
     const calculatedCheckMac = await generateEcpayCheckMacValueAsync(paramsCopy);
-
+    
+    console.log('[ECPay] CheckMacValue 比對:');
+    console.log('  收到:  ', receivedCheckMac);
+    console.log('  計算:  ', calculatedCheckMac);
+    
     if (receivedCheckMac !== calculatedCheckMac) {
       console.error('[ECPay] ❌ CheckMacValue 驗證失敗!');
       return { success: false, message: 'CheckMacValue 驗證失敗' };
     }
-
+    
+    console.log('[ECPay] ✅ CheckMacValue 驗證成功');
+    
     const merchantTradeNo = params.MerchantTradeNo;
     const rtnCode = params.RtnCode;
     const tradeNo = params.TradeNo;
     const paymentDate = params.PaymentDate;
     
     // 查詢現有的付款記錄
-
+    console.log('[ECPay] 查詢付款記錄:', merchantTradeNo);
+    
     // 使用 fetch 直接查詢，比用 supabase.query() 更可靠
     const queryUrl = `${supabase.url}/rest/v1/ecpay_records?merchant_trade_no=eq.${encodeURIComponent(merchantTradeNo)}&select=*`;
-
+    console.log('[ECPay] 查詢 URL:', queryUrl);
+    
     const queryResp = await fetch(queryUrl, {
       headers: {
         'apikey': supabase.apiKey,
@@ -4108,7 +4419,9 @@ async function handleEcpayCallback(params, supabase) {
     });
     
     const records = await queryResp.json();
-
+    console.log('[ECPay] 查詢結果類型:', typeof records);
+    console.log('[ECPay] 查詢結果:', Array.isArray(records) ? records.length + '筆' : JSON.stringify(records).substring(0, 200));
+    
     if (!Array.isArray(records) || records.length === 0) {
       console.error('[ECPay] 找不到付款記錄:', merchantTradeNo);
       console.error('[ECPay] 查詢結果:', records);
@@ -4116,16 +4429,18 @@ async function handleEcpayCallback(params, supabase) {
     }
     
     const record = records[0];
-
+    console.log('[ECPay] 找到付款記錄，user_id:', record.user_id, '狀態:', record.status);
+    
     // 🔥 冪等性檢查：如果已經處理過（狀態是 success），直接返回成功，不重複處理
     if (record.status === 'success' && rtnCode === '1') {
-
+      console.log('[ECPay] ⚠️ 該付款已處理過，跳過重複處理（冪等性保護）');
       return { success: true, message: '1|OK（已處理過）' };
     }
     
     // 更新付款記錄狀態
     const updateUrl = `${supabase.url}/rest/v1/ecpay_records?merchant_trade_no=eq.${encodeURIComponent(merchantTradeNo)}`;
-
+    console.log('[ECPay] 更新 URL:', updateUrl);
+    
     const updateResponse = await fetch(updateUrl, {
       method: 'PATCH',
       headers: {
@@ -4158,7 +4473,8 @@ async function handleEcpayCallback(params, supabase) {
         console.warn('[ECPay] 更新結果不是有效 JSON:', responseText.substring(0, 100));
       }
     }
-
+    console.log('[ECPay] ✅ 付款記錄已更新，狀態:', rtnCode === '1' ? 'success' : 'failed');
+    
     // 如果付款成功，更新訂單狀態並保存通知
     if (rtnCode === '1') {
       // 從 user_id 查詢使用者資訊
@@ -4175,29 +4491,39 @@ async function handleEcpayCallback(params, supabase) {
             orderDetailsArray = record.order_details;
           }
         }
-
+        
+        console.log('[ECPay] 開始更新訂單，數量:', orderDetailsArray.length);
+        console.log('[ECPay] order_ids:', record.order_ids);
+        console.log('[ECPay] payment_type:', record.payment_type);
+        
         // 判斷付款類型：order 或 break
         const paymentType = record.payment_type || 'order';
         
         if (paymentType === 'order') {
           // 訂單付款：根據 order_ids（UUID）更新 orders 表
           const orderIds = record.order_ids ? record.order_ids.split(',').map(id => id.trim()) : [];
-
+          console.log('[ECPay] 進入訂單更新分支，要更新的訂單 IDs:', orderIds);
+          
           for (const orderId of orderIds) {
             if (!orderId) {
-
+              console.log('[ECPay] ⚠️ 跳過空的 orderId');
               continue;
             }
-
+            
+            console.log('[ECPay] 開始更新訂單 ID:', orderId);
+            
             // 直接用訂單 ID 查詢
             const matchingOrders = await supabase.query('orders', { eq: { id: orderId } });
-
+            console.log('[ECPay] 查詢訂單結果:', Array.isArray(matchingOrders) ? `找到 ${matchingOrders.length} 筆` : '非陣列');
+            
             if (Array.isArray(matchingOrders) && matchingOrders.length > 0) {
               const order = matchingOrders[0];
-
+              console.log('[ECPay] ✅ 找到訂單:', orderId, '原狀態:', order.status, '原尾款:', order.balance_amount);
+              
               // 更新訂單：設置尾款為 0，狀態為已付款
               const updateOrderUrl = `${supabase.url}/rest/v1/orders?id=eq.${orderId}`;
-
+              console.log('[ECPay] 準備更新 URL:', updateOrderUrl);
+              
               const orderUpdateResponse = await fetch(updateOrderUrl, {
                 method: 'PATCH',
                 headers: {
@@ -4211,9 +4537,11 @@ async function handleEcpayCallback(params, supabase) {
                   updated_at: new Date().toISOString()
                 })
               });
-
+              
+              console.log('[ECPay] 訂單更新 HTTP 狀態:', orderUpdateResponse.status);
+              
               if (orderUpdateResponse.ok) {
-
+                console.log('[ECPay] ✅ 訂單已更新 - ID:', orderId, '尾款設為 0，狀態改為：已付款');
               } else {
                 const errorText = await orderUpdateResponse.text();
                 console.error('[ECPay] ❌ 訂單更新失敗:', orderId, 'HTTP', orderUpdateResponse.status, '錯誤:', errorText);
@@ -4224,7 +4552,9 @@ async function handleEcpayCallback(params, supabase) {
           }
         } else if (paymentType === 'break') {
           // 團拆付款：根據 orderDetails 中每筆的實際金額更新
-
+          console.log('[ECPay] 進入團拆更新分支，用戶ID:', record.user_id);
+          console.log('[ECPay] orderDetails 內容:', JSON.stringify(orderDetailsArray, null, 2));
+          
           for (const detail of orderDetailsArray) {
             const breakId = detail.breakId;
             const payAmount = Number(detail.balance || 0); // 🔥 使用 orderDetails 中記錄的實際金額
@@ -4232,16 +4562,19 @@ async function handleEcpayCallback(params, supabase) {
             const totalFeeFromDetail = Number(detail.totalFee || 0); // 🌟 總團費
             
             if (!breakId || payAmount <= 0) {
-
+              console.log('[ECPay] ⚠️ 跳過無效的 detail:', detail);
               continue;
             }
-
+            
+            console.log('[ECPay] 處理團拆:', breakId, '要付金額:', payAmount, '使用團拆金:', usedCredit);
+            
             // 🔥 使用 break_id 和 user_id 查詢團拆記錄
             const matchingBreaks = await supabase.query('breaks', { eq: { break_id: breakId, user_id: record.user_id } });
             
             if (Array.isArray(matchingBreaks) && matchingBreaks.length > 0) {
               const breakRecord = matchingBreaks[0];
-
+              console.log('[ECPay] ✅ 找到團拆記錄:', breakId, '用戶:', record.user_id, '記錄 ID:', breakRecord.id);
+              
               // 計算新的已付金額（只加上這筆團拆應付的金額）
               const currentPaid = Number(breakRecord.paid || 0);
               const newPaid = currentPaid + payAmount;
@@ -4249,7 +4582,9 @@ async function handleEcpayCallback(params, supabase) {
               
               // 🌟 判斷是否已結清: paid + 團拆金 >= totalFee
               const isCleared = (newPaid + usedCredit) >= totalFee;
-
+              
+              console.log('[ECPay] 付款明細 - 原已付:', currentPaid, '本次付:', payAmount, '新已付:', newPaid, '團拆金:', usedCredit, '總團費:', totalFee, '已結清:', isCleared);
+              
               const updateBreakUrl = `${supabase.url}/rest/v1/breaks?id=eq.${breakRecord.id}`;
               
               const breakUpdateResponse = await fetch(updateBreakUrl, {
@@ -4267,7 +4602,7 @@ async function handleEcpayCallback(params, supabase) {
               });
               
               if (breakUpdateResponse.ok) {
-
+                console.log('[ECPay] ✅ 團拆已更新 - 編號:', breakId, '已付:', newPaid, '總額:', totalFee);
               } else {
                 const errorText = await breakUpdateResponse.text();
                 console.error('[ECPay] ❌ 團拆更新失敗:', breakId, breakUpdateResponse.status, errorText);
@@ -4301,7 +4636,8 @@ async function handleEcpayCallback(params, supabase) {
         status: 'unread',
         created_at: new Date().toISOString()
       };
-
+      
+      console.log('[ECPay] 建立支付通知...');
       try {
         const notifUrl = `${supabase.url}/rest/v1/notifications`;
         const notifResponse = await fetch(notifUrl, {
@@ -4316,7 +4652,7 @@ async function handleEcpayCallback(params, supabase) {
         });
         
         if (notifResponse.ok) {
-
+          console.log('[ECPay] ✅ 已建立支付通知');
         } else {
           console.warn('[ECPay] ⚠️ 通知建立失敗:', notifResponse.status);
         }
@@ -4361,13 +4697,19 @@ async function generateEcpayCheckMacValueAsync(params) {
     
     // 加上 HashKey 和 HashIV
     const rawStr = 'HashKey=' + hashKey + '&' + paramStr + '&HashIV=' + hashIV;
-
+    
+    console.log('原始參數:', paramStr);
+    
     // URL Encode (完整編碼)
     let encodedStr = encodeURIComponent(rawStr);
-
+    
+    console.log('URL 編碼後:', encodedStr);
+    
     // 轉小寫
     encodedStr = encodedStr.toLowerCase();
-
+    
+    console.log('轉小寫後:', encodedStr);
+    
     // 特殊字符還原（綠界的 .NET URL Encode 規則）
     encodedStr = encodedStr
       .replace(/%2d/g, '-')   // -
@@ -4378,13 +4720,17 @@ async function generateEcpayCheckMacValueAsync(params) {
       .replace(/%28/g, '(')   // (
       .replace(/%29/g, ')')   // )
       .replace(/%20/g, '+');  // 空格轉為 +
-
+    
+    console.log('特殊字符還原後:', encodedStr);
+    
     // SHA256 加密
     const msgBuffer = new TextEncoder().encode(encodedStr);
     const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const checkMacValue = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
-
+    
+    console.log('最終 CheckMacValue:', checkMacValue);
+    
     return checkMacValue;
   } catch (error) {
     console.error('[ECPay] CheckMacValue 非同步生成失敗:', error);
@@ -4422,7 +4768,9 @@ function hmacSHA256(message, secret) {
 async function handleDebugUserOrders(body, supabase) {
   try {
     const { phone } = body;
-
+    
+    console.log('[DEBUG_USER] 查詢用戶:', phone);
+    
     // 查詢用戶
     const usersUrl = `${supabase.url}/rest/v1/users?phone=eq.${phone}&select=*`;
     const headers = {
@@ -4438,14 +4786,25 @@ async function handleDebugUserOrders(body, supabase) {
     }
     
     const user = users[0];
-
+    console.log('[DEBUG_USER] 用戶 ID:', user.id, 'nickname:', user.nickname);
+    
     // 查詢該用戶的所有訂單
     const ordersUrl = `${supabase.url}/rest/v1/orders?user_id=eq.${user.id}&select=*&order=timestamp.desc`;
     const ordersRes = await fetch(ordersUrl, { headers });
     const orders = await ordersRes.json();
-
+    
+    console.log('[DEBUG_USER] 訂單總數:', orders.length);
+    
     orders.forEach((order, idx) => {
-
+      console.log(`[DEBUG_USER] 訂單 #${idx + 1}:`, {
+        id: order.id,
+        item: order.item,
+        card_no: order.card_no,
+        quantity: order.quantity,
+        arrival_status: order.arrival_status || '(null)',
+        is_shipped: order.is_shipped === null ? '(null)' : order.is_shipped,
+        timestamp: order.timestamp
+      });
     });
     
     // 測試查詢條件
@@ -4459,7 +4818,10 @@ async function handleDebugUserOrders(body, supabase) {
     
     const test1 = await test1Res.json();
     const test2 = await test2Res.json();
-
+    
+    console.log('[DEBUG_USER] 查詢測試 - is_shipped=eq.false:', test1.length, '筆');
+    console.log('[DEBUG_USER] 查詢測試 - or=(is_shipped.is.null,is_shipped.eq.false):', test2.length, '筆');
+    
     return {
       success: true,
       user: { id: user.id, nickname: user.nickname, phone: user.phone },
@@ -4506,12 +4868,15 @@ async function handleGenerateShippingReport(body, supabase) {
     
     const orders = await ordersRes.json();
     const breaks = await breaksRes.json();
-
+    
+    console.log('[SHIPPING_REPORT] ========== 開始生成出貨報表 ==========');
+    console.log('[SHIPPING_REPORT] 查詢到', Array.isArray(orders) ? orders.length : 0, '筆未出貨訂單');
+    
     // 🔍 顯示前3筆訂單的詳細資料
     if (Array.isArray(orders) && orders.length > 0) {
-
+      console.log('[SHIPPING_REPORT] 前3筆訂單樣本:');
       orders.slice(0, 3).forEach((o, idx) => {
-
+        console.log(`  [${idx + 1}] user_id: ${o.user_id}, phone: ${o.users?.phone}, item: ${o.item}, card_no: ${o.card_no}, arrival_status: '${o.arrival_status}', is_shipped: ${o.is_shipped}`);
       });
     }
     
@@ -4551,11 +4916,11 @@ async function handleGenerateShippingReport(body, supabase) {
         // 下單時已經從商品目錄同步 arrival_status，直接使用即可
         let orderArrived = false;
         if (order.arrival_status === 'V') {
-
+          console.log('[SHIPPING_REPORT] ✅ 訂單已到貨:', order.item, order.card_no, 'arrival_status:', order.arrival_status);
           user.hasArrivedBox = true;
           orderArrived = true;
         } else {
-
+          console.log('[SHIPPING_REPORT] ⏳ 訂單未到貨:', order.item, order.card_no, 'arrival_status:', order.arrival_status || '(空值)');
         }
         
         // 記錄訂單的到貨狀態（用於後續判斷是否全部到貨）
@@ -4600,7 +4965,7 @@ async function handleGenerateShippingReport(body, supabase) {
       let allOrdersArrived = false;
       if (user.orders.length > 0) {
         allOrdersArrived = user.orders.every(order => order._arrived === true);
-
+        console.log(`[SHIPPING_REPORT] 用戶 ${user.nickname} (${user.phone}) 訂單到貨檢查: ${user.orders.length}筆訂單, 已到貨: ${user.orders.filter(o => o._arrived).length}筆, 全部到貨: ${allOrdersArrived}`);
       }
       
       // 出貨條件：
@@ -4612,15 +4977,28 @@ async function handleGenerateShippingReport(body, supabase) {
       user.allOrdersArrived = allOrdersArrived; // 記錄此狀態供前端顯示
       
       if (user.canShip) {
-
+        console.log('[SHIPPING_REPORT] ✅ 用戶符合出貨條件:', user.nickname, '(', user.phone, ')',
+          '\n  - 累積張數:', user.totalCards, '(需>=10)',
+          '\n  - 有到貨卡盒:', user.hasArrivedBox,
+          '\n  - 有團拆卡片:', user.hasBreakCards,
+          '\n  - 全部訂單已到貨:', allOrdersArrived);
       } else {
-
+        console.log('[SHIPPING_REPORT] ❌ 用戶不符合出貨條件:', user.nickname, '(', user.phone, ')',
+          '\n  - 累積張數:', user.totalCards, '(需>=10)',
+          '\n  - 有到貨卡盒:', user.hasArrivedBox,
+          '\n  - 有團拆卡片:', user.hasBreakCards,
+          '\n  - 全部訂單已到貨:', allOrdersArrived);
       }
     });
     
     // 只返回符合出貨條件的用戶
     const shippableUsers = Array.from(userMap.values()).filter(u => u.canShip);
-
+    
+    console.log('[SHIPPING_REPORT] ========== 報表生成完成 ==========');
+    console.log('[SHIPPING_REPORT] 總用戶數:', userMap.size);
+    console.log('[SHIPPING_REPORT] 符合出貨條件的用戶數:', shippableUsers.length);
+    console.log('[SHIPPING_REPORT] =====================================');
+    
     return {
       success: true,
       users: shippableUsers,
@@ -4823,7 +5201,9 @@ async function handleBatchUpdateTrackingNumbers(body, supabase) {
     if (!Array.isArray(updates) || updates.length === 0) {
       return { success: false, message: '未提供更新資料' };
     }
-
+    
+    console.log('[BATCH_UPDATE_TRACKING] Updating', updates.length, 'shipments');
+    
     // 批次更新每筆出貨紀錄
     const results = [];
     for (const update of updates) {
@@ -4848,7 +5228,12 @@ async function handleBatchUpdateTrackingNumbers(body, supabase) {
         const data = await getResponse.json();
         if (data && data.length > 0) {
           shipmentData = data[0];
-
+          console.log('[BATCH_UPDATE_TRACKING] 出貨紀錄:', {
+            id,
+            shipment_no: shipmentData.shipment_no,
+            user_email: shipmentData.users?.email || '(無)',
+            user_name: shipmentData.users?.nickname || '(無)'
+          });
         }
       }
       
@@ -4878,15 +5263,21 @@ async function handleBatchUpdateTrackingNumbers(body, supabase) {
             const shipmentNo = shipmentData.shipment_no || id;
             const items = shipmentData.items || '未提供商品資訊';
             const storeName = shipmentData.users.cvs_store_name || '';
-
+            
+            console.log('[BATCH_UPDATE_TRACKING] 準備寄送 email 給:', userEmail);
             await sendShipmentNotificationEmail(userEmail, userName, shipmentNo, trackingNo, items, storeName);
-
+            console.log(`[BATCH_UPDATE_TRACKING] ✅ Email 已寄送給 ${userEmail}`);
           } catch (emailError) {
             console.error('[BATCH_UPDATE_TRACKING] ❌ Email 寄送失敗:', emailError);
             // 不影響更新結果
           }
         } else {
-
+          console.log('[BATCH_UPDATE_TRACKING] ⏭️ 跳過 email 發送:', {
+            has_tracking: !!trackingNo,
+            has_shipment_data: !!shipmentData,
+            has_users: !!(shipmentData?.users),
+            has_email: !!(shipmentData?.users?.email)
+          });
         }
       } else {
         const errorText = await response.text();
@@ -4918,7 +5309,9 @@ async function handleDeleteShipment(body, supabase) {
     if (!shipmentId) {
       return { success: false, message: '缺少出貨紀錄 ID' };
     }
-
+    
+    console.log('[DELETE_SHIPMENT] Deleting shipment:', shipmentId);
+    
     const url = `${supabase.url}/rest/v1/shipments?id=eq.${shipmentId}`;
     const response = await fetch(url, {
       method: 'DELETE',
@@ -4942,4 +5335,5 @@ async function handleDeleteShipment(body, supabase) {
 }
 
 // ==================== 前端 HTML ====================
+
 

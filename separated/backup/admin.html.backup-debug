@@ -1290,7 +1290,7 @@
       notificationsCache = res.notifications || [];
       // 調試：輸出第一筆資料結構
       if (notificationsCache.length > 0) {
-
+        console.log('第一筆對帳資料:', notificationsCache[0]);
       }
       renderNotificationsWithFilter();
     }
@@ -1434,13 +1434,6 @@
     let ordersSortAsc = true;
     
     function renderOrdersTable(orders) {
-      // 📖 計算分頁
-      totalOrdersCount = orders.length;
-      const totalPages = Math.ceil(totalOrdersCount / ordersPerPage);
-      const startIdx = (currentOrdersPage - 1) * ordersPerPage;
-      const endIdx = startIdx + ordersPerPage;
-      const pageOrders = orders.slice(startIdx, endIdx);
-      
       let html = '<table><tr>';
       // 加入全選勾選框
       html += `<th style="width: 40px;"><input type="checkbox" id="selectAllOrders" onchange="toggleSelectAllOrders(this.checked)"></th>`;
@@ -1464,7 +1457,7 @@
       });
       html += '<th>操作</th></tr>';
       
-      pageOrders.forEach(order => {
+      orders.forEach(order => {
         const manualPriceIcon = order.remark === true || order.remark === 'true' ? ' 🔒' : '';
         html += `<tr>
           <td style="width: 40px;"><input type="checkbox" class="order-checkbox" data-order-id="${order.id}" onchange="updateBatchSelectUI()"></td>
@@ -1483,29 +1476,10 @@
         </tr>`;
       });
       html += '</table>';
-      
-      // 📖 加入分頁控制
-      if (totalPages > 1) {
-        html += '<div style="display:flex;justify-content:center;align-items:center;gap:10px;margin-top:20px;">';
-        html += `<button onclick="changeOrdersPage(${currentOrdersPage - 1})" ${currentOrdersPage === 1 ? 'disabled' : ''} style="padding:8px 16px;border:1px solid #ddd;background:white;border-radius:6px;cursor:pointer;">&laquo; 上一頁</button>`;
-        html += `<span style="color:#666;font-size:14px;">第 ${currentOrdersPage} / ${totalPages} 頁 (共 ${totalOrdersCount} 筆)</span>`;
-        html += `<button onclick="changeOrdersPage(${currentOrdersPage + 1})" ${currentOrdersPage === totalPages ? 'disabled' : ''} style="padding:8px 16px;border:1px solid #ddd;background:white;border-radius:6px;cursor:pointer;">下一頁 &raquo;</button>`;
-        html += '</div>';
-      } else {
-        html += `<div style="text-align:center;margin-top:15px;color:#666;font-size:14px;">共 ${totalOrdersCount} 筆訂單</div>`;
-      }
-      
       document.getElementById('ordersList').innerHTML = html;
       
       // 如果有勾選的訂單，顯示批次操作按鈕
       updateBatchSelectUI();
-    }
-    
-    function changeOrdersPage(newPage) {
-      const totalPages = Math.ceil(totalOrdersCount / ordersPerPage);
-      if (newPage < 1 || newPage > totalPages) return;
-      currentOrdersPage = newPage;
-      renderOrdersTable(ordersCache);
     }
     
     function toggleSelectAllOrders(checked) {
@@ -1578,7 +1552,9 @@
       if (!confirm(`確定要更新 ${selectedIds.length} 筆訂單的狀態為「${newStatus}」嗎？`)) {
         return;
       }
-
+      
+      console.log('[batchUpdateOrderStatus] 開始批次更新:', { selectedIds, newStatus });
+      
       let successCount = 0;
       let failureCount = 0;
       
@@ -1633,37 +1609,10 @@
         return 0;
       });
       
-      currentOrdersPage = 1; // 📖 排序後重置到第一頁
       renderOrdersTable(ordersCache);
     }
     
     // ===== 訂單管理功能 =====
-    let currentOrdersPage = 1;
-    const ordersPerPage = 30;
-    let totalOrdersCount = 0;
-    
-    // ===== 團拆/用戶/團拆金分頁變數 =====
-    let currentBreaksPage = 1;
-    const breaksPerPage = 30;
-    let totalBreaksCount = 0;
-    
-    let currentUsersPage = 1;
-    const usersPerPage = 30;
-    let totalUsersCount = 0;
-    let usersCache = [];
-    
-    let currentCreditsPage = 1;
-    const creditsPerPage = 30;
-    let totalCreditsCount = 0;
-    let creditsCache = [];
-    
-    let currentProductsPage = 1;
-    const productsPerPage = 30;
-    let totalProductsCount = 0;
-    
-    // ===== 用戶選擇器緩存 =====
-    let allUsersCache = [];
-    
     async function loadAllOrders() {
       const res = await callAPI('getAllOrders', { limit: 1000 });
       if (res.success) {
@@ -1685,9 +1634,12 @@
         alert('請輸入至少一個搜尋條件');
         return;
       }
-
-      const res = await callAPI('searchOrders', { phone, nickname, item, limit: 1000 });
-
+      
+      console.log('[searchOrders] 搜尋條件:', { phone, nickname, item });
+      
+      const res = await callAPI('searchOrders', { phone, nickname, item, limit: 100 });
+      console.log('[searchOrders] 回應:', res);
+      
       if (!res.success) {
         alert('搜尋失敗: ' + res.message);
         return;
@@ -1695,7 +1647,6 @@
       
       const orders = res.orders || [];
       ordersCache = orders;
-      currentOrdersPage = 1; // 📖 搜尋時重置到第一頁
       
       if (orders.length === 0) {
         document.getElementById('ordersList').innerHTML = '<p style="text-align: center; color: #999; padding: 40px;">沒有找到相符的訂單</p>';
@@ -1719,19 +1670,6 @@
       document.getElementById('editOrderBalance').value = balance;
       document.getElementById('editOrderNotes').value = notes;
       document.getElementById('editOrderManualPrice').checked = manualPrice;
-      
-      // 👤 顯示當前客戶資訊
-      const order = ordersCache.find(o => o.id === id);
-      if (order) {
-        const nickname = order.nickname || '未知';
-        const phone = order.phone || '未知';
-        document.getElementById('editOrderCurrentUserInfo').textContent = `${nickname} (${phone})`;
-        document.getElementById('editOrderCurrentUser').style.display = 'block';
-      }
-      document.getElementById('editOrderUserId').style.display = 'none';
-      document.getElementById('editOrderUserId').value = '';
-      document.getElementById('editOrderUserSearch').value = '';
-      
       document.getElementById('editOrderModal').classList.add('show');
     }
     
@@ -1751,7 +1689,6 @@
       const balance = document.getElementById('editOrderBalance').value;
       const notes = document.getElementById('editOrderNotes').value;
       const manualPrice = document.getElementById('editOrderManualPrice').checked;
-      const newUserId = document.getElementById('editOrderUserId').value;
       
       if (!id) {
         alert('訂單 ID 遺失');
@@ -1759,22 +1696,16 @@
       }
       
       try {
-        const updateData = {
+        const res = await callAPI('updateOrder', {
           id,
           status: status || undefined,
           balance: balance ? Number(balance) : undefined,
           notes: notes || undefined,
           manual_price: manualPrice
-        };
+        });
         
-        // 👤 如果選擇了新客戶，加入更新數據
-        if (newUserId) {
-          updateData.user_id = newUserId;
-          console.log('更新訂單客戶:', newUserId);
-        }
+        console.log('[Admin] updateOrder 回應:', res);
         
-        const res = await callAPI('updateOrder', updateData);
-
         if (res && res.success) {
           alert('✅ 訂單已更新');
           closeModal('editOrderModal');
@@ -1828,18 +1759,6 @@
       document.getElementById('editBreakItem').value = item || '';
       document.getElementById('editBreakIsOpened').checked = isOpened;
       document.getElementById('editBreakIsShipped').checked = isShipped;
-      
-      // 👤 顯示當前客戶資訊
-      const breakItem = breaksCache.find(b => b.id === id);
-      if (breakItem) {
-        const buyer = breakItem.buyer || '未知';
-        document.getElementById('editBreakCurrentUserInfo').textContent = buyer;
-        document.getElementById('editBreakCurrentUser').style.display = 'block';
-      }
-      document.getElementById('editBreakUserId').style.display = 'none';
-      document.getElementById('editBreakUserId').value = '';
-      document.getElementById('editBreakUserSearch').value = '';
-      
       document.getElementById('editBreakModal').classList.add('show');
     }
     
@@ -1850,7 +1769,6 @@
       const item = document.getElementById('editBreakItem').value;
       const isOpened = document.getElementById('editBreakIsOpened').checked;
       const isShipped = document.getElementById('editBreakIsShipped').checked;
-      const newUserId = document.getElementById('editBreakUserId').value;
       
       if (!id) {
         alert('團拆 ID 遺失');
@@ -1858,23 +1776,17 @@
       }
       
       try {
-        const updateData = {
+        const res = await callAPI('updateBreak', {
           id,
           paid: paid ? Number(paid) : undefined,
           status: status || undefined,
           item: item || undefined,
           is_opened: isOpened,
           is_shipped: isShipped
-        };
+        });
         
-        // 👤 如果選擇了新客戶，加入更新數據
-        if (newUserId) {
-          updateData.user_id = newUserId;
-          console.log('更新團拆客戶:', newUserId);
-        }
+        console.log('[Admin] updateBreak 回應:', res);
         
-        const res = await callAPI('updateBreak', updateData);
-
         if (res && res.success) {
           alert('✅ 團拆已更新');
           closeModal('editBreakModal');
@@ -1912,93 +1824,14 @@
       }
     }
     
-    // ===== 用戶選擇器功能 =====
-    async function loadAllUsersToCache() {
-      const res = await callAPI('getUsers', { limit: 1000 });
-      if (res.success) {
-        allUsersCache = res.users || [];
-      }
-      return allUsersCache;
-    }
-    
-    async function searchUsersForOrder() {
-      if (allUsersCache.length === 0) {
-        await loadAllUsersToCache();
-      }
-      
-      const searchTerm = document.getElementById('editOrderUserSearch').value.trim().toLowerCase();
-      if (!searchTerm) {
-        alert('請輸入搜尋關鍵字');
-        return;
-      }
-      
-      const filtered = allUsersCache.filter(u => {
-        const phone = (u.phone || '').toString().toLowerCase();
-        const nickname = (u.nickname || '').toLowerCase();
-        return phone.includes(searchTerm) || nickname.includes(searchTerm);
-      });
-      
-      const selectEl = document.getElementById('editOrderUserId');
-      selectEl.innerHTML = '<option value="">-- 選擇用戶 --</option>';
-      
-      filtered.forEach(u => {
-        const option = document.createElement('option');
-        option.value = u.id;
-        option.textContent = `${u.nickname || '未命名'} (${u.phone})`;
-        selectEl.appendChild(option);
-      });
-      
-      selectEl.style.display = 'block';
-      
-      if (filtered.length === 0) {
-        alert('沒有找到符合的用戶');
-      }
-    }
-    
-    async function searchUsersForBreak() {
-      if (allUsersCache.length === 0) {
-        await loadAllUsersToCache();
-      }
-      
-      const searchTerm = document.getElementById('editBreakUserSearch').value.trim().toLowerCase();
-      if (!searchTerm) {
-        alert('請輸入搜尋關鍵字');
-        return;
-      }
-      
-      const filtered = allUsersCache.filter(u => {
-        const phone = (u.phone || '').toString().toLowerCase();
-        const nickname = (u.nickname || '').toLowerCase();
-        return phone.includes(searchTerm) || nickname.includes(searchTerm);
-      });
-      
-      const selectEl = document.getElementById('editBreakUserId');
-      selectEl.innerHTML = '<option value="">-- 選擇用戶 --</option>';
-      
-      filtered.forEach(u => {
-        const option = document.createElement('option');
-        option.value = u.id;
-        option.textContent = `${u.nickname || '未命名'} (${u.phone})`;
-        selectEl.appendChild(option);
-      });
-      
-      selectEl.style.display = 'block';
-      
-      if (filtered.length === 0) {
-        alert('沒有找到符合的用戶');
-      }
-    }
-    
     async function loadUsers() {
-      const res = await callAPI('getUsers', { limit: 1000 });
+      const res = await callAPI('getUsers', { limit: 100 });
       if (!res.success) {
         alert('載入失敗: ' + res.message);
         return;
       }
       
       const users = res.users || [];
-      usersCache = users;
-      currentUsersPage = 1;
       renderUsersTable(users);
     }
     
@@ -2018,9 +1851,6 @@
       }
       
       const users = res.users || [];
-      usersCache = users;
-      currentUsersPage = 1;
-      
       if (users.length === 0) {
         document.getElementById('usersList').innerHTML = '<p style="text-align: center; color: #999; padding: 40px;">沒有找到相符的用戶</p>';
         return;
@@ -2030,17 +1860,10 @@
     }
     
     function renderUsersTable(users) {
-      // 📖 計算分頁
-      totalUsersCount = users.length;
-      const totalPages = Math.ceil(totalUsersCount / usersPerPage);
-      const startIdx = (currentUsersPage - 1) * usersPerPage;
-      const endIdx = startIdx + usersPerPage;
-      const pageUsers = users.slice(startIdx, endIdx);
-      
       let html = '<table>';
       html += '<tr><th>暱稱</th><th>電話</th><th>Email</th><th>備註</th><th>收件用門市</th><th>711店號</th><th>操作</th></tr>';
       
-      pageUsers.forEach(user => {
+      users.forEach(user => {
         const phone = user.phone ? user.phone.toString() : '-';
         html += `<tr>
           <td>${user.nickname || '-'}</td>
@@ -2056,26 +1879,7 @@
       });
       
       html += '</table>';
-      
-      // 📖 加入分頁控制
-      if (totalPages > 1) {
-        html += '<div style="display:flex;justify-content:center;align-items:center;gap:10px;margin-top:20px;">';
-        html += `<button onclick="changeUsersPage(${currentUsersPage - 1})" ${currentUsersPage === 1 ? 'disabled' : ''} style="padding:8px 16px;border:1px solid #ddd;background:white;border-radius:6px;cursor:pointer;">&laquo; 上一頁</button>`;
-        html += `<span style="color:#666;font-size:14px;">第 ${currentUsersPage} / ${totalPages} 頁 (共 ${totalUsersCount} 筆)</span>`;
-        html += `<button onclick="changeUsersPage(${currentUsersPage + 1})" ${currentUsersPage === totalPages ? 'disabled' : ''} style="padding:8px 16px;border:1px solid #ddd;background:white;border-radius:6px;cursor:pointer;">下一頁 &raquo;</button>`;
-        html += '</div>';
-      } else {
-        html += `<div style="text-align:center;margin-top:15px;color:#666;font-size:14px;">共 ${totalUsersCount} 筆用戶</div>`;
-      }
-      
       document.getElementById('usersList').innerHTML = html;
-    }
-    
-    function changeUsersPage(newPage) {
-      const totalPages = Math.ceil(totalUsersCount / usersPerPage);
-      if (newPage < 1 || newPage > totalPages) return;
-      currentUsersPage = newPage;
-      renderUsersTable(usersCache);
     }
     
     function editUser(phone, nickname, email, address, realName, cvsStoreName, cvsStoreId) {
@@ -2129,24 +1933,11 @@
       }
       
       const credits = res.credits || [];
-      creditsCache = credits;
-      currentCreditsPage = 1;
       
       if (credits.length === 0) {
         document.getElementById('creditList').innerHTML = '<p>查無資料</p>';
         return;
       }
-      
-      renderCreditsTable(credits);
-    }
-    
-    function renderCreditsTable(credits) {
-      // 📖 計算分頁
-      totalCreditsCount = credits.length;
-      const totalPages = Math.ceil(totalCreditsCount / creditsPerPage);
-      const startIdx = (currentCreditsPage - 1) * creditsPerPage;
-      const endIdx = startIdx + creditsPerPage;
-      const pageCredits = credits.slice(startIdx, endIdx);
       
       let html = `
         <table>
@@ -2165,7 +1956,7 @@
           <tbody>
       `;
       
-      pageCredits.forEach(credit => {
+      credits.forEach(credit => {
         const available = credit.credit - (credit.usedAmount || 0);
         const status = credit.used ? '已使用' : '可用';
         const safeNickname = (credit.nickname || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -2195,25 +1986,7 @@
         </table>
       `;
       
-      // 📖 加入分頁控制
-      if (totalPages > 1) {
-        html += '<div style="display:flex;justify-content:center;align-items:center;gap:10px;margin-top:20px;">';
-        html += `<button onclick="changeCreditsPage(${currentCreditsPage - 1})" ${currentCreditsPage === 1 ? 'disabled' : ''} style="padding:8px 16px;border:1px solid #ddd;background:white;border-radius:6px;cursor:pointer;">&laquo; 上一頁</button>`;
-        html += `<span style="color:#666;font-size:14px;">第 ${currentCreditsPage} / ${totalPages} 頁 (共 ${totalCreditsCount} 筆)</span>`;
-        html += `<button onclick="changeCreditsPage(${currentCreditsPage + 1})" ${currentCreditsPage === totalPages ? 'disabled' : ''} style="padding:8px 16px;border:1px solid #ddd;background:white;border-radius:6px;cursor:pointer;">下一頁 &raquo;</button>`;
-        html += '</div>';
-      } else {
-        html += `<div style="text-align:center;margin-top:15px;color:#666;font-size:14px;">共 ${totalCreditsCount} 筆團拆金</div>`;
-      }
-      
       document.getElementById('creditList').innerHTML = html;
-    }
-    
-    function changeCreditsPage(newPage) {
-      const totalPages = Math.ceil(totalCreditsCount / creditsPerPage);
-      if (newPage < 1 || newPage > totalPages) return;
-      currentCreditsPage = newPage;
-      renderCreditsTable(creditsCache);
     }
     
     function openAddCreditModal() {
@@ -2454,7 +2227,6 @@
       const res = await callAPI('getAllProducts', params);
       if (res.success) {
         productsCache = res.products || [];
-        currentProductsPage = 1;
         renderProductsTable(productsCache);
       } else {
         alert('載入商品失敗: ' + res.message);
@@ -2472,7 +2244,6 @@
         productsSortAsc = true;
       }
       
-      currentProductsPage = 1;
       const sorted = [...productsCache].sort((a, b) => {
         let aVal = a[key];
         let bVal = b[key];
@@ -2503,13 +2274,6 @@
         return;
       }
       
-      // 📖 計算分頁
-      totalProductsCount = products.length;
-      const totalPages = Math.ceil(totalProductsCount / productsPerPage);
-      const startIdx = (currentProductsPage - 1) * productsPerPage;
-      const endIdx = startIdx + productsPerPage;
-      const pageProducts = products.slice(startIdx, endIdx);
-      
       const sortIcon = (key) => {
         if (productsSortKey !== key) return ' ⇅';
         return productsSortAsc ? ' ▲' : ' ▼';
@@ -2526,7 +2290,7 @@
       html += '<th>操作</th>';
       html += '</tr></thead><tbody>';
       
-      pageProducts.forEach(p => {
+      products.forEach(p => {
         const availableText = p.is_available ? '<span style="color:#27ae60;">✅ 開放</span>' : '<span style="color:#e74c3c;">❌ 關閉</span>';
         const isBoxText = (p.is_box_preorder === true || p.is_box_preorder === 'true') ? '<span style="color:#3498db;">📦 是</span>' : '否';
         
@@ -2565,26 +2329,7 @@
       });
       
       html += '</tbody></table>';
-      
-      // 📖 加入分頁控制
-      if (totalPages > 1) {
-        html += '<div style="display:flex;justify-content:center;align-items:center;gap:10px;margin-top:20px;">';
-        html += `<button onclick="changeProductsPage(${currentProductsPage - 1})" ${currentProductsPage === 1 ? 'disabled' : ''} style="padding:8px 16px;border:1px solid #ddd;background:white;border-radius:6px;cursor:pointer;">&laquo; 上一頁</button>`;
-        html += `<span style="color:#666;font-size:14px;">第 ${currentProductsPage} / ${totalPages} 頁 (共 ${totalProductsCount} 筆)</span>`;
-        html += `<button onclick="changeProductsPage(${currentProductsPage + 1})" ${currentProductsPage === totalPages ? 'disabled' : ''} style="padding:8px 16px;border:1px solid #ddd;background:white;border-radius:6px;cursor:pointer;">下一頁 &raquo;</button>`;
-        html += '</div>';
-      } else {
-        html += `<div style="text-align:center;margin-top:15px;color:#666;font-size:14px;">共 ${totalProductsCount} 筆商品</div>`;
-      }
-      
       list.innerHTML = html;
-    }
-    
-    function changeProductsPage(newPage) {
-      const totalPages = Math.ceil(totalProductsCount / productsPerPage);
-      if (newPage < 1 || newPage > totalPages) return;
-      currentProductsPage = newPage;
-      renderProductsTable(productsCache);
     }
     
     function openAddProductModal() {
@@ -2811,7 +2556,6 @@
         breaksCache = res.breaks || [];
         breaksSortKey = null;
         breaksSortAsc = true;
-        currentBreaksPage = 1;
         renderBreaksTable(breaksCache);
       } else {
         alert('載入團拆失敗: ' + res.message);
@@ -2833,7 +2577,6 @@
                (!buyer || bBuyer.includes(buyer));
       });
       
-      currentBreaksPage = 1;
       renderBreaksTable(filtered);
     }
     
@@ -2864,18 +2607,10 @@
         return 0;
       });
       
-      currentBreaksPage = 1;
       renderBreaksTable(sorted);
     }
     
     function renderBreaksTable(breaks) {
-      // 📖 計算分頁
-      totalBreaksCount = breaks.length;
-      const totalPages = Math.ceil(totalBreaksCount / breaksPerPage);
-      const startIdx = (currentBreaksPage - 1) * breaksPerPage;
-      const endIdx = startIdx + breaksPerPage;
-      const pageBreaks = breaks.slice(startIdx, endIdx);
-      
       let html = '<table style="width: 100%; border-collapse: collapse;"><tr>';
       html += `<th style="width: 40px;"><input type="checkbox" id="selectAllBreaks" onchange="toggleSelectAllBreaks(this.checked)"></th>`;
       
@@ -2899,7 +2634,7 @@
       });
       html += '<th>購買品項</th><th>已拆</th><th>已寄出</th><th>操作</th></tr>';
       
-      pageBreaks.forEach(breakItem => {
+      breaks.forEach(breakItem => {
         const balance = (breakItem.total_fee || 0) - (breakItem.paid || 0);
         html += `<tr>
           <td style="width: 40px;"><input type="checkbox" class="break-checkbox" data-break-id="${breakItem.id}" onchange="updateBreakBatchSelectUI()"></td>
@@ -2921,28 +2656,9 @@
         </tr>`;
       });
       html += '</table>';
-      
-      // 📖 加入分頁控制
-      if (totalPages > 1) {
-        html += '<div style="display:flex;justify-content:center;align-items:center;gap:10px;margin-top:20px;">';
-        html += `<button onclick="changeBreaksPage(${currentBreaksPage - 1})" ${currentBreaksPage === 1 ? 'disabled' : ''} style="padding:8px 16px;border:1px solid #ddd;background:white;border-radius:6px;cursor:pointer;">&laquo; 上一頁</button>`;
-        html += `<span style="color:#666;font-size:14px;">第 ${currentBreaksPage} / ${totalPages} 頁 (共 ${totalBreaksCount} 筆)</span>`;
-        html += `<button onclick="changeBreaksPage(${currentBreaksPage + 1})" ${currentBreaksPage === totalPages ? 'disabled' : ''} style="padding:8px 16px;border:1px solid #ddd;background:white;border-radius:6px;cursor:pointer;">下一頁 &raquo;</button>`;
-        html += '</div>';
-      } else {
-        html += `<div style="text-align:center;margin-top:15px;color:#666;font-size:14px;">共 ${totalBreaksCount} 筆團拆</div>`;
-      }
-      
       document.getElementById('breaksList').innerHTML = html;
       
       updateBreakBatchSelectUI();
-    }
-    
-    function changeBreaksPage(newPage) {
-      const totalPages = Math.ceil(totalBreaksCount / breaksPerPage);
-      if (newPage < 1 || newPage > totalPages) return;
-      currentBreaksPage = newPage;
-      renderBreaksTable(breaksCache);
     }
     
     function toggleSelectAllBreaks(checked) {
@@ -3222,6 +2938,15 @@
       return lines.map(buyer => ({ buyer, team: '', price: null }));
     }
 
+
+
+
+
+
+
+
+
+
     async function parseAndPreview() {
       const breakNumber = document.getElementById('breakNumber').value.trim();
       const breakCategory = document.getElementById('breakCategory').value;
@@ -3334,6 +3059,10 @@
       }
     }
 
+
+
+
+
     function renderPreview(breaksData) {
       const tbody = document.getElementById('previewBody');
       tbody.innerHTML = '';
@@ -3377,6 +3106,8 @@
 
       try {
         const res = await callAPI('addBreaksBatch', { breaks: currentBreaksPreview });
+
+        console.log('[submitBreaksData] 完整回應:', res);
 
         // 無論成功或失敗都顯示詳細訊息
         let htmlContent = '';
@@ -3797,6 +3528,9 @@
         }
 
         const shipments = res.shipments || [];
+        
+        console.log('後端返回的出貨紀錄數量:', shipments.length);
+        console.log('前三筆資料:', shipments.slice(0, 3));
 
         // 顯示控制按鈕
         document.getElementById('allShipmentsControls').style.display = 'block';
@@ -3930,7 +3664,9 @@
       }
       
       // Debug: 檢查資料結構
-
+      console.log('選取的出貨紀錄:', selectedShipments);
+      console.log('第一筆資料範例:', selectedShipments[0]);
+      
       // 生成711交貨便CSV格式
       // 格式參考：寄件人姓名,寄件人電話,寄件人mail,實際包裹價值,收件門市,收件門市店號,收件人姓名(請與證件姓名),收件人電話,收件人mail
       const csvRows = [];
@@ -3940,7 +3676,14 @@
       
       selectedShipments.forEach(shipment => {
         // Debug: 檢查各個欄位的值
-
+        console.log('處理出貨紀錄:', {
+          ship_store: shipment.ship_store,
+          store_number: shipment.store_number,
+          real_name: shipment.real_name,
+          nickname: shipment.nickname,
+          phone: shipment.phone
+        });
+        
         // 確保電話號碼有開頭的 0
         let receiverPhone = shipment.phone || '';
         if (receiverPhone && !receiverPhone.startsWith('0')) {
@@ -4238,7 +3981,8 @@
 
     // 打開建立出貨模態視窗 V2 (支持勾選)
     function openCreateShipmentModalV2(userId, renderedIndex) {
-
+      console.log('openCreateShipmentModalV2 called with userId:', userId, 'renderedIndex:', renderedIndex);
+      
       if (!currentShippingReportData || !currentShippingReportData.users) {
         alert('❌ 找不到用戶數據');
         return;
@@ -4246,7 +3990,8 @@
 
       // 使用 userId 查找用戶
       const user = currentShippingReportData.users.find(u => u.userId === userId);
-
+      console.log('Found user:', user);
+      
       if (!user) {
         alert('❌ 找不到用戶數據');
         return;
@@ -4323,7 +4068,8 @@
 
     // 建立出貨紀錄 V2 (支持勾選)
     async function createShipmentV2(userId, orderIds, breakIds, nickname, phone) {
-
+      console.log('createShipmentV2 called with:', { userId, orderIds, breakIds, nickname, phone });
+      
       if (!userId) {
         alert('❌ 建立失敗：缺少用戶 ID');
         return;

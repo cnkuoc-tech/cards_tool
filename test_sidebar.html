@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sidebar Test</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding-top: 60px; font-family: Arial; }
+    
+    .app-header { 
+      position: fixed; 
+      top: 0; 
+      left: 0; 
+      right: 0; 
+      height: 60px; 
+      background: #2c5f7c;
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      padding: 0 15px;
+    }
+    
+    .menu-btn { 
+      background: none; 
+      border: none; 
+      color: white; 
+      font-size: 24px; 
+      cursor: pointer; 
+      padding: 5px;
+    }
+    
+    .header-title { 
+      color: white; 
+      font-size: 18px; 
+      margin-left: 15px;
+    }
+    
+    /* 基礎sidebar樣式 */
+    .sidebar { 
+      position: fixed; 
+      top: 60px; 
+      left: 0; 
+      bottom: 0; 
+      width: 280px; 
+      background: #fff; 
+      z-index: 2500; 
+      transform: translateX(-100%) !important; 
+      transition: transform 0.3s ease-in-out;
+      box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+      display: flex; 
+      flex-direction: column;
+      border: 2px solid red;
+    }
+    
+    .sidebar.open { 
+      transform: translateX(0) !important; 
+    }
+    
+    .sidebar-overlay { 
+      position: fixed; 
+      top: 0; 
+      left: 0; 
+      right: 0; 
+      bottom: 0; 
+      background: rgba(0,0,0,0.5); 
+      z-index: 2400; 
+      display: none !important;
+    }
+    
+    .sidebar-overlay.show { 
+      display: block !important; 
+    }
+    
+    .sidebar-header { 
+      background: #f8f9fa; 
+      color: #333; 
+      padding: 20px; 
+      border-bottom: 1px solid #eee;
+    }
+    
+    .sidebar-menu { 
+      flex: 1; 
+      overflow-y: auto; 
+      padding: 10px 0; 
+    }
+    
+    .menu-item { 
+      display: flex; 
+      align-items: center; 
+      padding: 15px 20px; 
+      color: #333; 
+      cursor: pointer; 
+      border-left: 4px solid transparent; 
+      transition: all 0.2s; 
+    }
+    
+    .menu-item:hover { 
+      background: #f8f9fa; 
+    }
+    
+    .menu-item.active { 
+      background: #e3f2fd; 
+      color: #2c5f7c; 
+      border-left-color: #2c5f7c; 
+      font-weight: bold; 
+    }
+    
+    .container { 
+      max-width: 100%; 
+      width: 100%; 
+      margin: 20px auto; 
+      background: #fff; 
+      padding: 25px; 
+      border-radius: 12px;
+    }
+    
+    .section-title { 
+      font-size: 24px; 
+      color: #2c5f7c; 
+      margin: 30px 0 20px; 
+      padding-left: 15px; 
+      border-left: 5px solid #e65100; 
+    }
+    
+    /* 媒體查詢 - 這是關鍵！ */
+    @media (max-width: 1024px) {
+      .sidebar { 
+        width: 280px; 
+        position: fixed !important;
+        left: 0 !important;
+        top: 60px !important;
+        bottom: 0 !important;
+        height: auto !important;
+        transform: translateX(-100%) !important;
+        z-index: 2500 !important;
+      }
+      .sidebar.open { 
+        transform: translateX(0) !important; 
+      }
+      .sidebar-overlay { 
+        display: none !important; 
+      }
+      .sidebar-overlay.show { 
+        display: block !important; 
+      }
+      
+      .container { 
+        margin: 10px; 
+        padding: 15px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-header">
+    <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+    <span class="header-title">Test Sidebar</span>
+  </div>
+
+  <div id="sidebarOverlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
+  
+  <div id="mySidebar" class="sidebar">
+    <div class="sidebar-header">
+      <strong>菜單</strong>
+    </div>
+    <div class="sidebar-menu">
+      <div class="menu-item active" onclick="selectMenu(this)">首頁</div>
+      <div class="menu-item" onclick="selectMenu(this)">訂單</div>
+      <div class="menu-item" onclick="selectMenu(this)">設定</div>
+      <div class="menu-item" onclick="selectMenu(this)">關於</div>
+    </div>
+  </div>
+
+  <div class="container">
+    <h1>Sidebar 測試</h1>
+    <p>視窗寬度: <span id="width">0</span>px</p>
+    <p>請試試拉窄視窗到 1024px 以下，或在手機上打開此頁面。</p>
+    <p><strong>sidebar 應該會隱藏，點擊 ☰ 按鈕會滑出。</strong></p>
+    
+    <div class="section-title">測試內容</div>
+    <p>Lorem ipsum dolor sit amet...</p>
+  </div>
+
+  <script>
+    function toggleSidebar() {
+      document.getElementById('mySidebar').classList.toggle('open');
+      document.getElementById('sidebarOverlay').classList.toggle('show');
+    }
+    
+    function selectMenu(el) {
+      document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+      el.classList.add('active');
+      toggleSidebar();
+    }
+    
+    // 顯示當前視窗寬度
+    function updateWidth() {
+      document.getElementById('width').textContent = window.innerWidth;
+    }
+    
+    window.addEventListener('resize', updateWidth);
+    updateWidth();
+  </script>
+
+</body>
+</html>

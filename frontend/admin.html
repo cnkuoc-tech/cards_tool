@@ -338,6 +338,8 @@
       <div class="menu">
         <button class="menu-btn active" onclick="switchTab('notifications')">📋 對帳管理</button>
         <button class="menu-btn" onclick="switchTab('orders')">📦 訂單管理</button>
+        <button class="menu-btn" onclick="switchTab('breaks')">⚾ 團拆管理</button>
+        <button class="menu-btn" onclick="switchTab('addBreaks')" style="background: #27ae60; margin-top: 20px;">➕ 新增團拆</button>
         <button class="menu-btn" onclick="switchTab('users')">👥 用戶管理</button>
         <button class="menu-btn" onclick="switchTab('products')">🎁 商品管理</button>
       </div>
@@ -354,11 +356,24 @@
         <div class="tab-content" id="orders-tab">
           <h2 class="section-title">📦 訂單管理</h2>
           <div class="search-box">
-            <input type="text" id="searchPhone" placeholder="電話號碼" />
-            <input type="text" id="searchNickname" placeholder="暱稱" />
+            <input type="text" id="searchPhone" placeholder="客戶電話號碼" />
+            <input type="text" id="searchNickname" placeholder="客戶暱稱" />
             <button onclick="searchOrders()">搜尋</button>
           </div>
           <div id="ordersList"></div>
+        </div>
+        
+        <!-- 團拆管理 -->
+        <div class="tab-content" id="breaks-tab">
+          <h2 class="section-title">⚾ 團拆管理</h2>
+          <div class="search-box">
+            <input type="text" id="searchBreakId" placeholder="團拆編號" />
+            <input type="text" id="searchBreakName" placeholder="團名" />
+            <input type="text" id="searchBreakBuyer" placeholder="訂購人" />
+            <button onclick="searchBreaks()">🔍 搜尋</button>
+            <button onclick="loadAllBreaks()" style="background: #e67e22; margin-left: 10px;">📋 全部團拆</button>
+          </div>
+          <div id="breaksList"></div>
         </div>
         
         <!-- 用戶管理 -->

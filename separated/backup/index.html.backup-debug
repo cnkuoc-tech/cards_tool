@@ -1724,6 +1724,44 @@
           💳 (3) 信用卡(綠界)
         </button>
       </div>
+      
+      <!-- 綠界測試配置面板 -->
+      <details style="margin-top:20px;padding:15px;background:#f5f5f5;border-radius:8px;cursor:pointer;">
+        <summary style="font-weight:bold;color:#ff6b35;font-size:14px;margin-bottom:10px;">⚙️ 綠界測試配置</summary>
+        <div style="padding:10px 0;font-size:12px;line-height:1.8;color:#666;">
+          <div style="margin-bottom:15px;">
+            <strong style="color:#333;">📌 綠界金流資訊:</strong>
+            <div style="background:white;padding:10px;border-radius:4px;margin-top:8px;font-family:monospace;font-size:11px;">
+              <div>特店編號: <span id="ecpayMerchantId" style="color:#e65100;font-weight:bold;">3002607</span></div>
+              <div>環境: <span id="ecpayEnv" style="color:#00a86b;font-weight:bold;">🧪 測試環境</span></div>
+              <div>支付URL: <span id="ecpayPaymentUrl" style="color:#0066cc;font-weight:bold;overflow-wrap:break-word;word-break:break-all;">https://payment-stage.ecpay.com.tw</span></div>
+              <div style="margin-top:8px;padding-top:8px;border-top:1px solid #eee;">
+                金額限制: <span style="color:#d32f2f;">NT$ 1 ~ NT$ 20,000</span> (測試環境上限)
+              </div>
+            </div>
+          </div>
+          <div style="margin-bottom:15px;">
+            <strong style="color:#333;">🧪 測試卡號 (台灣區):</strong>
+            <div style="background:white;padding:10px;border-radius:4px;margin-top:8px;">
+              <div style="margin:5px 0;">
+                <strong>成功:</strong> <span style="color:#00a86b;font-family:monospace;">4111-1111-1111-1111</span> (任意有效期/CVV)
+              </div>
+              <div style="margin:5px 0;">
+                <strong>失敗:</strong> <span style="color:#d32f2f;font-family:monospace;">4012-8888-8888-8888</span>
+              </div>
+            </div>
+          </div>
+          <div>
+            <strong style="color:#333;">💡 測試流程:</strong>
+            <ul style="margin:8px 0;padding-left:20px;">
+              <li>1. 選擇「信用卡(綠界)」進行結帳</li>
+              <li>2. 跳轉到綠界頁面</li>
+              <li>3. 使用上方測試卡號進行測試付款</li>
+              <li>4. 系統會記錄付款通知 (可在後台「對帳管理」查看)</li>
+            </ul>
+          </div>
+        </div>
+      </details>
     </div>
   </div>
   
@@ -1871,23 +1909,26 @@
     // ===== API 調用 =====
     async function callAPI(action, params = {}) {
       try {
-
+        console.log('%c[API] 發送請求:', 'color:orange;font-weight:bold', action, '| 參數:', params);
         const response = await fetch(API_URL, {
           method: 'POST',
           body: JSON.stringify({ action, ...params }),
           headers: { 'Content-Type': 'application/json' }
         });
-
+        
+        console.log('%c[API] HTTP 狀態碼:', 'color:orange', response.status, '| action:', action);
+        
         if (!response.ok) {
           console.error('%c[API Error]', 'color:red;font-weight:bold', 'HTTP ' + response.status + ':', response.statusText);
           return { success: false, message: 'HTTP ' + response.status };
         }
         
         const text = await response.text();
-
+        console.log('%c[API] 回應內容:', 'color:green', text.substring(0, 300));
+        
         try {
           const result = JSON.parse(text);
-
+          console.log('%c[API] ✅ 成功解析回應:', 'color:green;font-weight:bold', result);
           return result;
         } catch (e) {
           console.error('%c[Parse Error]', 'color:red;font-weight:bold', text);
@@ -1930,14 +1971,6 @@
         return;
       }
       
-      // 🔑 訂單和團拆頁面需要完整登入資訊
-      if ((id === 'orders' || id === 'breaks') && isLoggedIn && (!user.phone || !user.birthday)) {
-        alert('⚠️ 登入資訊已失效，請重新登入');
-        logout();
-        openModal('auth');
-        return;
-      }
-      
       previousPage = currentPage;
       currentPage = id;
       const pages = ['homePage', 'orderEntry', 'boxEntry', 'productDetailPage', 'ordersPage', 'breaksPage', 'psaPage', 'profilePage', 'fortunePage', 'aboutPage'];
@@ -1965,19 +1998,15 @@
         (async () => {
           showLoading('載入訂單資料中...');
           try {
-            // 🔑 保存 birthday,因為 API 不會回傳此欄位
-            const savedBirthday = user.birthday;
-            
             const orderRes = await callAPI('getOrderInfo', {
               phone: user.phone,
-              birthday: savedBirthday
+              birthday: user.birthday
             });
             
             if (orderRes && orderRes.success) {
               user.orders = orderRes.orders || [];
               user.groupBreaks = orderRes.groupBreaks || [];
-              user.birthday = savedBirthday; // 🔑 恢復 birthday
-
+              console.log('訂單頁面:重新載入訂單資料,共', user.orders.length, '筆');
               displayOrders();
             } else {
               displayOrders();
@@ -2000,19 +2029,15 @@
         (async () => {
           showLoading('載入團拆資料中...');
           try {
-            // 🔑 保存 birthday,因為 API 不會回傳此欄位
-            const savedBirthday = user.birthday;
-            
             const orderRes = await callAPI('getOrderInfo', {
               phone: user.phone,
-              birthday: savedBirthday
+              birthday: user.birthday
             });
             
             if (orderRes && orderRes.success) {
               user.orders = orderRes.orders || [];
               user.groupBreaks = orderRes.groupBreaks || [];
-              user.birthday = savedBirthday; // 🔑 恢復 birthday
-
+              console.log('團拆頁面:重新載入團拆資料,共', user.groupBreaks.length, '筆');
               await displayBreaks();
             } else {
               await displayBreaks();
@@ -2319,7 +2344,10 @@
       btn.innerText = '登入';
 
       if (res && res.success) {
-
+        console.log('原始 res 物件:', res);
+        console.log('res.email 值:', res.email);
+        console.log('res 是否有 email 屬性:', 'email' in res);
+        
         isLoggedIn = true;
         user = res;
         
@@ -2335,6 +2363,11 @@
         } else {
           user.phone = String(user.phone);
         }
+        
+        console.log('登入成功,user 物件:', user);
+        console.log('user.phone:', user.phone);
+        console.log('user.nickname:', user.nickname);
+        console.log('user.email:', user.email);
 
         if (remember) {
           localStorage.setItem('ning_phone', phone);
@@ -2387,7 +2420,7 @@
         // 載入訂單和團拆資料
         if (user.orders && user.orders.length > 0) displayOrders();
         if (user.groupBreaks && user.groupBreaks.length > 0) {
-
+          console.log('👉 登入後調用 displayBreaks');
           await displayBreaks();
         }
       } else {
@@ -3424,14 +3457,11 @@
         if (res && res.success) {
           // 背景處理所有更新(購物車畫面保持開啟)
           
-          // 🔑 保存 birthday,因為 API 不會回傳此欄位
-          const savedBirthday = user.birthday;
-          
           // 重新取得使用者資料,更新訂單列表
-          var refreshRes = await callAPI('getOrderInfo', { phone: user.phone, birthday: savedBirthday });
+          var refreshRes = await callAPI('getOrderInfo', { phone: user.phone, birthday: user.birthday });
           if (refreshRes && refreshRes.success) {
             user = refreshRes;
-            user.birthday = savedBirthday; // 🔑 恢復 birthday
+            user.birthday = user.birthday; // 保持 birthday
             // 更新訂單顯示
             if (user.orders && user.orders.length > 0) displayOrders();
             if (user.groupBreaks && user.groupBreaks.length > 0) displayBreaks();
@@ -3533,29 +3563,18 @@
         return;
       }
       
-      // 🔑 檢查是否有完整的登入資訊
-      if (!user.phone || !user.birthday) {
-        alert('⚠️ 登入資訊已失效，請重新登入');
-        logout();
-        return;
-      }
-      
       try {
         showLoading('正在重新載入資料...');
-        
-        // 🔑 保存 birthday,因為 API 不會回傳此欄位
-        const savedBirthday = user.birthday;
         
         // 🔑 使用 user.birthday（登入時保存的）
         const res = await callAPI('getOrderInfo', {
           phone: user.phone,
-          birthday: savedBirthday
+          birthday: user.birthday
         });
         
         if (res && res.success) {
           user.orders = res.orders || [];
           user.groupBreaks = res.groupBreaks || [];
-          user.birthday = savedBirthday; // 🔑 恢復 birthday
           
           // 重新顯示當前頁面
           if (currentPage === 'orders') {
@@ -3580,8 +3599,14 @@
       const orders = user.orders || [];
       const list = document.getElementById('ordersList');
 
+      console.log('📊 displayOrders 執行中');
+      console.log('  - ordersList 元素:', list);
+      console.log('  - 訂單數:', orders.length);
+      console.log('  - currentPage:', currentPage);
+      console.log('  - currentOrderFilter:', currentOrderFilter);
       if (orders.length > 0) {
-
+        console.log('  - 第一筆訂單 status:', orders[0].status);
+        console.log('  - 第一筆訂單 arrivalStatus:', orders[0].arrivalStatus);
       }
 
       if (!list) {
@@ -3593,7 +3618,7 @@
       list.innerHTML = '<div style="text-align:center;padding:60px 20px;"><div class="loader" style="display:inline-block;margin-bottom:15px;"></div><p style="color:#666;font-size:16px;margin:0;">載入訂單中...</p></div>';
 
       if (orders.length === 0) {
-
+        console.log('⚠️ 無訂單資料');
         list.innerHTML = '<p style="text-align:center;color:#999;padding:40px;">無訂單</p>';
         updateOrderCounts(orders);
         return;
@@ -3628,9 +3653,7 @@
 
       // 🌟 按訂單類型篩選(卡盒/單卡),但勾選狀態會跨分頁保留
       let typeFiltered = sortedOrders.filter(o => {
-        // 🔑 支援 true/TRUE/1 等多種格式
-        const boxOrderStr = String(o.box_order || '').toUpperCase();
-        const isBoxOrder = boxOrderStr === 'TRUE' || boxOrderStr === '1' || o.box_order === true || o.box_order === 1;
+        const isBoxOrder = String(o.box_order).toLowerCase() === 'true';
         if (currentOrderType === 'box') {
           return isBoxOrder;
         } else if (currentOrderType === 'card') {
@@ -3665,10 +3688,16 @@
       } else if (currentOrderFilter === 'shipped') {
         // 已寄出：is_shipped === true (包括布林值 true 和字符串 'true')
         filtered = typeFiltered.filter(o => o.isShipped === true || o.isShipped === 'true');
-
+        console.log('[FILTER] 已寄出篩選：', typeFiltered.length, '→', filtered.length);
+        console.log('[FILTER] 樣本 isShipped 值:', typeFiltered.slice(0, 5).map(o => ({
+          id: o.id, 
+          isShipped: o.isShipped, 
+          type: typeof o.isShipped,
+          matches: o.isShipped === true || o.isShipped === 'true'
+        })));
         // 顯示完整物件以供檢查
         if (typeFiltered.length > 0) {
-
+          console.log('[FILTER] 第一個訂單完整物件:', typeFiltered[0]);
         }
       }
 
@@ -3700,7 +3729,7 @@
 
       pageOrders.forEach((o, idx) => {
           // 除錯：顯示 box_order 狀態
-
+          console.log('[DEBUG] 訂單', o.item, 'box_order:', o.box_order, '判斷:', String(o.box_order).toLowerCase() === 'true');
         // 🔑 使用 rowIndex 來找到原始索引，如果找不到就用當前篩選後的索引
         let originalIdx = -1;
         if (o.rowIndex) {
@@ -3714,7 +3743,9 @@
             order.timestamp === o.timestamp
           );
         }
-
+        
+        console.log('[訂單卡片] item:', o.item, 'rowIndex:', o.rowIndex, 'originalIdx:', originalIdx, 'balance:', o.balance);
+        
         let cardId = 'order-card-' + (o.rowIndex || idx) + '-' + idx;
         
         const balance = Number(o.balance || 0);
@@ -3731,7 +3762,9 @@
         const isPendingPayment = statusText === '付款確認中';
         const isPaymentFailed = statusText === '付款失敗';
         const isDepositPaid = statusText === '已付訂金';
-
+        
+        console.log('訂單:', o.item, o.cardNo, 'status:', statusText, 'balance:', balance, 'isCleared:', isCleared, 'isPendingPayment:', isPendingPayment, 'isPaymentFailed:', isPaymentFailed, 'isDepositPaid:', isDepositPaid);
+        
         html += '<div class="order-card">';
         // 除錯：在標題顯示 box_order 狀態
         html += `<div class="order-card-header" onclick="toggleOrderCard('${cardId}')" style="cursor:pointer;">`;
@@ -3794,9 +3827,8 @@
         html += '</div>';
         
         // 🌟 顯示全站累積數量 (僅單卡顯示)
-        const boxOrderStr = String(o.box_order || '').toUpperCase();
-        const isBoxOrder = o.box_order === true || boxOrderStr === 'TRUE' || o.box_order === 1 || boxOrderStr === '1';
-        if (!isBoxOrder && o.累積張數) {
+        const isBoxOrder = o.box_order === true || o.box_order === 'true' || o.box_order === 1 || o.box_order === '1';
+        if (String(o.box_order).toLowerCase() !== 'true' && o.累積張數) {
           html += '<div class="order-info-item">';
           html += '<span class="order-info-label">🌍 全站累積</span>';
           html += '<span class="order-info-value" style="color:#2196f3;font-size:16px;font-weight:bold;">' + (o.累積張數 || 0) + ' 張</span>';
@@ -3883,6 +3915,12 @@
       const shippedCount = orders.filter(o => o.isShipped === true || o.isShipped === 'true').length;
 
       // 🔍 診斷日誌
+      console.log('[ORDER_COUNT] 分類統計:');
+      console.log('  總訂單:', allCount);
+      console.log('  已到貨:', arrivedCount);
+      console.log('  未到貨:', notArrivedCount);
+      console.log('  已寄出:', shippedCount);
+      console.log('  樣本數據:', orders.slice(0, 3).map(o => ({arrivalStatus: o.arrivalStatus, isShipped: o.isShipped, type: typeof o.isShipped})));
 
       document.getElementById('count-all').textContent = allCount;
       document.getElementById('count-arrived').textContent = arrivedCount;
@@ -4028,6 +4066,8 @@
           total += Number(order.balance);
         }
       });
+      
+      console.log('[結帳按鈕] 勾選數量:', count, '總尾款:', total);
 
       const checkoutBtn = document.getElementById('checkoutBtn');
       if (!checkoutBtn) {
@@ -4122,12 +4162,12 @@
     }
     
     function selectPaymentType(type) {
-
+      console.log('%c[Frontend] selectPaymentType() 被調用:', 'color:orange;font-weight:bold', '類型 =', type);
       selectedPaymentType = type;
       closeModal('paymentMethod');
       
       if (type === 'ecpay') {
-
+        console.log('%c[Frontend] 使用者選擇綠界支付，即將調用 processEcpayPayment()', 'color:orange;font-weight:bold;font-size:14px');
         // 🌟 訂單和團拆都支援綠界付款
         processEcpayPayment();
         return;
@@ -4193,7 +4233,11 @@
         const itemList = selectedOrders.map(o => (o.item || '未知商品') + (o.cardNo ? ' #' + o.cardNo : '')).join('||');
         const cardNoList = selectedOrders.map(o => o.cardNo || '').join('||');
         const orderIds = selectedOrders.map(o => o.id || '').join('||'); // 🔑 加入訂單 ID
-
+        
+        console.log('[PAYMENT] 選中的訂單:', selectedOrders);
+        console.log('[PAYMENT] 訂單 ID 陣列:', selectedOrders.map(o => o.id));
+        console.log('[PAYMENT] 訂單 ID 字串:', orderIds);
+        
         const quantityTotal = selectedOrders.reduce((sum, o) => sum + Number(o.quantity || 0), 0);
         const totalAmount = selectedOrders.reduce((sum, o) => sum + Number(o.balance || 0), 0); // 🔑 使用尾款而非總價
         
@@ -4212,7 +4256,9 @@
           remark: remark,
           status: 'pending'
         };
-
+        
+        console.log('[PAYMENT] 發送的 paymentData:', paymentData);
+        
       } else if (selectedBreakIndices.size > 0) {
         // 團拆付款 - 🔑 從全域索引取得所有跨頁勾選的團拆
         isBreakPayment = true;
@@ -4253,7 +4299,9 @@
         alert('請先勾選要付款的項目');
         return;
       }
-
+      
+      console.log('送出付款通知:', paymentData);
+      
       try {
         // 🌟 顯示處理中畫面
         showLoading('📤 正在送出付款通知...');
@@ -4313,13 +4361,16 @@
         
         if (paymentOrderNo && orderDetailsJson) {
           try {
-
+            console.log('[checkEcpayReturn] 🔥 sessionStorage orderDetailsJson:', orderDetailsJson);
+            
             var orderDetails = JSON.parse(orderDetailsJson);
-
+            console.log('[checkEcpayReturn] 🔥 解析後的 orderDetails:', JSON.stringify(orderDetails));
+            
             // 檢查每筆記錄是否都有必要的欄位
             if (Array.isArray(orderDetails) && orderDetails.length > 0) {
               orderDetails.forEach((detail, i) => {
-
+                console.log('[checkEcpayReturn] 🔥 第' + (i+1) + '筆: userId=' + (detail.userId || 'MISSING') + ', phone=' + detail.phone + ', breakId=' + detail.breakId + ', nickname=' + detail.nickname);
+                console.log('[checkEcpayReturn] 🔥 第' + (i+1) + '筆完整:', JSON.stringify(detail));
               });
             }
             
@@ -4327,24 +4378,31 @@
             var isBreakPayment = orderDetails.length > 0 && orderDetails[0].breakId !== undefined;
             var apiEndpoint = isBreakPayment ? "updateBreakStatusToPending" : "updateOrderStatusToPending";
             var displayType = isBreakPayment ? "團拆" : "訂單";
-
+            
+            console.log('準備更新' + displayType + '狀態為「付款確認中」');
+            console.log('orderDetails:', orderDetails);
+            console.log('isBreakPayment:', isBreakPayment);
+            
             // 立即更新狀態為「付款確認中」
             var updateResult = await callAPI(apiEndpoint, { 
               orderDetails: isBreakPayment ? orderDetails : orderDetails,
               breakDetails: isBreakPayment ? orderDetails : undefined,
               merchantTradeNo: paymentOrderNo
             });
-
+            
+            console.log('更新結果:', updateResult);
+            
             if (updateResult && updateResult.success) {
-
+              console.log('✅ ' + displayType + '狀態已更新為「付款確認中」，共更新', updateResult.updatedCount, '筆');
+              
               // 🔍 顯示匹配詳情
               if (updateResult.matchDetails) {
-
+                console.log('🔍 匹配詳情:', updateResult.matchDetails);
                 updateResult.matchDetails.forEach(function(match, idx) {
                   if (match.matched === false) {
                     console.warn('❌ 第' + (idx+1) + '筆未匹配: 暱稱=' + match.nickname + ', 團拆編號=' + match.breakId);
                   } else {
-
+                    console.log('✅ 第' + (idx+1) + '筆已匹配: 暱稱=' + match.nickname + ', 團拆編號=' + match.breakId + ', 行號=' + match.row + ', 原狀態=' + match.oldStatus);
                   }
                 });
               }
@@ -4367,21 +4425,24 @@
             
             // 重新載入訂單/團拆以顯示「付款確認中」狀態
             if (isLoggedIn) {
-
+              console.log('🔄 開始重新載入資料, isLoggedIn:', isLoggedIn, 'user.phone:', user.phone);
               try {
                 showLoading('更新狀態中...');
                 
                 // 使用 user.birthday
-
+                console.log('📅 生日資料:', user.birthday);
+                
                 const orderRes = await callAPI('getOrderInfo', {
                   phone: user.phone,
                   birthday: user.birthday
                 });
-
+                
+                console.log('📦 API 回應:', orderRes);
+                
                 if (orderRes && orderRes.success) {
                   user.orders = orderRes.orders || [];
                   user.groupBreaks = orderRes.groupBreaks || [];
-
+                  console.log('✅ 重新載入成功, 訂單:', user.orders.length, '筆, 團拆:', user.groupBreaks.length, '筆');
                 } else {
                   console.warn('⚠️ API 回應不成功:', orderRes);
                 }
@@ -4398,20 +4459,20 @@
                   const breaksPage = document.getElementById('breaksPage');
                   if (breaksPage) {
                     breaksPage.style.display = 'block';
-
+                    console.log('✅ breaksPage 已顯示');
                   }
                   currentPage = 'breaks';
                   displayBreaks();
-
+                  console.log('✅ displayBreaks() 執行完成');
                 } else {
                   const ordersPage = document.getElementById('ordersPage');
                   if (ordersPage) {
                     ordersPage.style.display = 'block';
-
+                    console.log('✅ ordersPage 已顯示');
                   }
                   currentPage = 'orders';
                   displayOrders();
-
+                  console.log('✅ displayOrders() 執行完成');
                 }
                 
                 hideLoading();
@@ -4502,7 +4563,8 @@
                   if (orderRes && orderRes.success) {
                     user.orders = orderRes.orders || [];
                     user.groupBreaks = orderRes.groupBreaks || [];
-
+                    console.log('✅ 付款成功後重新載入, 訂單:', user.orders.length, '筆, 團拆:', user.groupBreaks.length, '筆');
+                    
                     // 如果目前在訂單或團拆頁面,立即更新顯示
                     if (currentPage === 'orders') {
                       displayOrders();
@@ -4516,7 +4578,8 @@
               }
               
               // 移除通知視窗，由後台確認更新結果
-
+              console.log('✅ 付款成功，商家交易號: ' + merchantTradeNo + '，訂單狀態已更新');
+              
               if (isLoggedIn && currentPage !== 'orders' && currentPage !== 'breaks') {
                 // 如果不在訂單或團拆頁面,切換到訂單頁面
                 switchTab("orders");
@@ -4578,12 +4641,15 @@
                   status: '付款失敗',
                   merchantTradeNo: merchantTradeNo
                 };
-
+                
+                console.log('📦 準備更新訂單狀態為失敗:', updatePayload);
+                
                 // 呼叫後端 API 批量更新為「付款失敗」
                 const updateRes = await callAPI('updateOrderStatusToFailed', updatePayload);
                 
                 if (updateRes && updateRes.success) {
-
+                  console.log('✅ ' + (paymentType === 'break' ? '團拆' : '訂單') + '已更新為「付款失敗」，可重新嘗試付款');
+                  
                   // 提示用戶狀態已更新
                   alert('📋 ' + (paymentType === 'break' ? '團拆' : '訂單') + '狀態已標記為「付款失敗」\n\n你可以重新選擇並支付');
                 } else {
@@ -4642,13 +4708,20 @@
     
     async function processEcpayPayment() {
       try {
-
+        console.log('%c[Frontend] ⭐ processEcpayPayment 函數已執行！', 'color:green;font-weight:bold;font-size:14px');
+        
         // 🌟 使用全域變數檢查是訂單付款還是團拆付款
         var totalAmount = 0;
         var itemNames = [];
         var orderDetails = [];
         var paymentType = ''; // 'order' or 'break'
-
+        
+        console.log('%c[Frontend] 檢查全域變數...', 'color:blue');
+        console.log('[Frontend] selectedOrderIndices:', selectedOrderIndices);
+        console.log('[Frontend] selectedOrderIndices.size:', selectedOrderIndices.size);
+        console.log('[Frontend] selectedBreakIndices:', selectedBreakIndices);
+        console.log('[Frontend] selectedBreakIndices.size:', selectedBreakIndices.size);
+        
         // 🔑 從全域 selectedOrderIndices 取得所有跨頁勾選的訂單
         if (selectedOrderIndices.size > 0) {
           // 訂單付款 - 使用全域索引
@@ -4708,9 +4781,9 @@
               // 🌟 計算此團拆已使用的團拆金
               var usedCreditForThisBreak = 0;
               if (window.breakCreditHistory && window.breakCreditHistory.length > 0) {
-
+                console.log('🔍 [付款計算] 團拆:', uniqueBreakKey, 'breakCreditHistory 數量:', window.breakCreditHistory.length);
                 window.breakCreditHistory.forEach(function(credit, idx) {
-
+                  console.log('  Credit[' + idx + '] usedBreak:', credit.usedBreak, 'usedAmount:', credit.usedAmount);
                   if (credit.usedBreak) {
                     // 🔥 新格式: "breakId@@breakName::amount||breakId2@@breakName2::amount2"
                     // 🔥 舊格式: "breakId@@breakName||breakId2@@breakName2" (無金額)
@@ -4722,16 +4795,17 @@
                       // 分離 breakKey 和 amount
                       var parts = breakEntry.split('::');
                       var breakKey = parts[0]; // "breakId@@breakName"
-
+                      console.log('    檢查 breakEntry:', breakEntry, '=> breakKey:', breakKey, 'amount:', parts[1]);
+                      
                       if (breakKey === uniqueBreakKey) {
-
+                        console.log('    ✅ 匹配到!');
                         matchedInThisCredit = true;
                         if (parts.length > 1) {
                           // 新格式: 有金額
                           creditUsedAmount += Number(parts[1]);
-
+                          console.log('    新格式,金額:', parts[1], '累計:', creditUsedAmount);
                         } else {
-
+                          console.log('    舊格式,無金額資訊');
                         }
                       }
                     });
@@ -4739,17 +4813,27 @@
                     // 如果匹配到但沒有金額資訊(舊格式),使用整個 usedAmount
                     if (matchedInThisCredit) {
                       var amountToAdd = creditUsedAmount > 0 ? creditUsedAmount : (credit.usedAmount || 0);
-
+                      console.log('  ➕ 加入金額:', amountToAdd, '(creditUsedAmount:', creditUsedAmount, 'credit.usedAmount:', credit.usedAmount + ')');
                       usedCreditForThisBreak += amountToAdd;
                     }
                   }
                 });
-
+                console.log('🔍 [付款計算] 最終 usedCreditForThisBreak:', usedCreditForThisBreak);
               }
               
               // 🔑 實際尾款 = 總團費 - 團拆金 - 實付金額
               var balance = totalFee - usedCreditForThisBreak - paid;
-
+              
+              console.log('團拆付款 debug:', {
+                breakId: breakId,
+                idx: idx,
+                totalFee: totalFee,
+                paid: paid,
+                usedCreditForThisBreak: usedCreditForThisBreak,
+                balance: balance,
+                breakItem: breakItem
+              });
+              
               if (balance > 0) {
                 totalAmount += balance;
                 breakIds.push(breakId);
@@ -4758,7 +4842,8 @@
                 itemNames.push(itemName);
                 
                 // 傳送團拆的識別資料給後端（包含 user_id 用於精確匹配）
-
+                console.log('🔥 [BREAK_PAYMENT] 檢查 user 物件: user.id=' + (user.id || 'UNDEFINED') + ', user.nickname=' + user.nickname + ', user.phone=' + user.phone);
+                
                 orderDetails.push({
                   userId: user.id,  // 🔥 使用 user_id 進行精確匹配（最可靠）
                   nickname: user.nickname,
@@ -4769,7 +4854,9 @@
                   usedCredit: usedCreditForThisBreak,  // 🌟 傳送此團拆使用的團拆金金額
                   totalFee: totalFee  // 🌟 也傳送總團費方便後端計算
                 });
-
+                
+                console.log('🔥 [BREAK_PAYMENT] 已加入 orderDetails，當前內容:', JSON.stringify(orderDetails[orderDetails.length - 1]));
+                console.log('加入團拆: ' + breakId + ' - ' + (breakItem.name || breakItem['團名']) + ', 尾款: ' + balance + ', 團拆金: ' + usedCreditForThisBreak);
               }
             }
           });
@@ -4788,7 +4875,10 @@
         if (!confirm(msg)) {
           return;
         }
-
+        
+        console.log('🔥 [PAYMENT_SUBMIT] 最終的 orderDetails:', JSON.stringify(orderDetails, null, 2));
+        console.log('🔥 [PAYMENT_SUBMIT] 第一筆內容:', orderDetails.length > 0 ? JSON.stringify(orderDetails[0]) : 'EMPTY');
+        
         showLoading("Creating payment order...");
         
         var payload = {
@@ -4806,7 +4896,11 @@
         hideLoading();
         
         if (res && res.success) {
-
+          console.log('%c[Frontend] ✅ 後端返回成功，準備提交表單', 'color:green;font-weight:bold;font-size:14px');
+          console.log('[Frontend] paymentUrl:', res.paymentUrl);
+          console.log('[Frontend] params keys:', Object.keys(res.params || {}).join(','));
+          console.log('[Frontend] params 內容:', res.params);
+          
           // 設置付款進行中的標記
           sessionStorage.setItem('ecpayPaymentInProgress', 'true');
           if (res.merchantTradeNo) {
@@ -4822,7 +4916,8 @@
           form.action = res.paymentUrl;
           form.target = "_self";
           form.id = "ecpayForm";
-
+          
+          console.log('%c[Frontend] 建立 form 元素，開始添加輸入欄位', 'color:blue');
           var fieldCount = 0;
           for (var key in res.params) {
             var input = document.createElement("input");
@@ -4831,23 +4926,29 @@
             input.value = res.params[key];
             form.appendChild(input);
             fieldCount++;
-
+            console.log(`[Frontend]   ├─ 欄位 ${fieldCount}: ${key} = ${String(input.value).substring(0, 50)}${String(input.value).length > 50 ? '...' : ''}`);
           }
           
           document.body.appendChild(form);
-
+          
+          console.log('%c[Frontend] ✅ 表單已建立且添加到 DOM', 'color:green', '| 欄位數:', fieldCount);
+          console.log('[Frontend] 表單 action:', form.action);
+          console.log('[Frontend] 表單 method:', form.method);
+          console.log('[Frontend] 表單 id:', form.id);
+          
           // 延遲提交以避免 CSP 問題
           setTimeout(function() {
-
+            console.log('%c[Frontend] 開始提交表單到:', 'color:purple;font-weight:bold', form.action);
+            console.log('[Frontend] 表單的 HTML:', form.outerHTML.substring(0, 200));
             try {
               // 使用 requestSubmit() 避免 CSP 問題
               if (form.requestSubmit) {
                 form.requestSubmit();
-
+                console.log('%c[Frontend] ✅ form.requestSubmit() 已調用', 'color:purple;font-weight:bold');
               } else {
                 // 備用方案:使用 HTMLFormElement.prototype.submit
                 HTMLFormElement.prototype.submit.call(form);
-
+                console.log('%c[Frontend] ✅ HTMLFormElement.prototype.submit.call() 已調用', 'color:purple;font-weight:bold');
               }
             } catch (submitErr) {
               console.error('%c[Frontend] ❌ 表單提交拋出例外:', 'color:red;font-weight:bold', submitErr);
@@ -4855,7 +4956,7 @@
           }, 100);
           
         } else {
-
+          console.log('%c[Frontend] ❌ 後端返回失敗:', 'color:red;font-weight:bold', res);
           var errMsg = res.message || "Please try again";
           alert("Failed: " + errMsg);
         }
@@ -4896,25 +4997,30 @@
     async function displayBreaks() {
       const breaks = user.groupBreaks || [];
       const list = document.getElementById('breaksList');
-
+      
+      console.log('顯示團拆資料:', breaks);
+      console.log('🔍 團拆分類 Debug:');
       breaks.forEach((b, idx) => {
-
+        console.log('  [' + idx + '] id=' + (b.id || b['團拆編號']) + ', category=' + (b.category || b['種類'] || 'NULL') + ', type=' + typeof b.category);
       });
       
       // 🌟 查詢並顯示團拆金餘額
       if (user && user.nickname) {
         try {
-
+          console.log('💰 開始查詢團拆金:', user.nickname);
           var creditInfo = await callAPI('getBreakCredit', { nickname: user.nickname });
-
+          console.log('💰 團拆金 API 回應:', creditInfo);
+          
           var creditBanner = document.getElementById('breakCreditBanner');
-
+          console.log('💰 creditBanner 元素:', creditBanner);
+          
           // 🌟 儲存團拆金歷史到全域變數,供卡片顯示使用
           window.breakCreditHistory = creditInfo && creditInfo.success ? (creditInfo.breakCreditHistory || creditInfo.history || []) : [];
-
+          console.log('💰 breakCreditHistory:', window.breakCreditHistory);
+          
           if (creditBanner) {
             if (creditInfo && creditInfo.success && creditInfo.available > 0) {
-
+              console.log('💰 有可用團拆金:', creditInfo.available);
               // 只在有可用團拆金時顯示（顯示可用餘額而非總額）
               creditBanner.innerHTML = 
                 '<div style="background:linear-gradient(135deg, #1e3a5f 0%, #2c5f7c 100%);color:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 4px 12px rgba(30,58,95,0.3);">' +
@@ -4927,9 +5033,9 @@
                   '</div>' +
                 '</div>';
               creditBanner.style.display = 'block';
-
+              console.log('✅ 團拆金橫幅已顯示');
             } else {
-
+              console.log('❌ 無可用團拆金 - creditInfo.success:', creditInfo?.success, 'creditInfo.available:', creditInfo?.available);
               creditBanner.style.display = 'none';
             }
           } else {
@@ -4940,7 +5046,7 @@
           window.breakCreditHistory = [];
         }
       } else {
-
+        console.log('❌ user 或 nickname 不存在');
       }
 
       if (breaks.length === 0) {
@@ -5010,7 +5116,7 @@
         var isDepositPaid = statusText === '已付訂金';
         var isNotified = b.paymentNotified === true;
         var category = b.category || b['種類'] || '棒球';
-
+        console.log('🔍 [卡片 ' + (b.id || b['團拆編號']) + '] category=' + category + ', b.category=' + b.category + ', b[種類]=' + b['種類']);
         var categoryEmoji = category === '棒球' ? '⚾' : category === '籃球' ? '🏀' : '🎯';
         var isOpened = b.isOpened || b['是否已拆'] || '';
         var isShipped = b.isShipped || b['卡片是否寄出'] || '';
@@ -5047,7 +5153,8 @@
             }
           });
         }
-
+        console.log('🔍 團拆 ' + uniqueBreakKey + ' 已使用團拆金: NT$' + usedCreditForThisBreak);
+        
         // 🌟 計算實際尾款 = 總團費 - 團拆金 - 實付金額
         var actualBalance = totalFee - usedCreditForThisBreak - paid;
         if (actualBalance < 0) actualBalance = 0;
@@ -5337,7 +5444,7 @@
           if (balance > 0) {
             total += balance;
           }
-
+          console.log('團拆 idx=' + idx + ', balance=' + balance + ', 累積total=' + total);
         }
       });
 
@@ -5481,7 +5588,11 @@
     function openBreakPaymentMethod() {
       // 🔑 從全域 selectedBreakIndices 取得所有跨頁勾選的團拆
       const count = selectedBreakIndices.size;
-
+      
+      console.log('🔍 openBreakPaymentMethod 被呼叫');
+      console.log('selectedBreakIndices.size:', count);
+      console.log('selectedBreakIndices:', Array.from(selectedBreakIndices));
+      
       if (count === 0) {
         alert('請先勾選要付款的團拆項目');
         return;
@@ -5491,7 +5602,7 @@
       let total = 0;
       selectedBreakIndices.forEach(idx => {
         const breakItem = user.groupBreaks[idx];
-
+        console.log('檢查團拆 idx=' + idx + ':', breakItem);
         if (breakItem) {
           const totalFee = Number(breakItem.totalFee || breakItem['總團費'] || 0);
           const paid = Number(breakItem.paid || breakItem['已付金額'] || 0);
@@ -5530,13 +5641,16 @@
           
           // 實際尾款 = 總團費 - 團拆金 - 實付金額
           const balance = totalFee - usedCreditForThisBreak - paid;
-
+          
+          console.log('  totalFee:', totalFee, 'paid:', paid, 'usedCredit:', usedCreditForThisBreak, 'balance:', balance);
           if (balance > 0) {
             total += balance;
           }
         }
       });
-
+      
+      console.log('計算結果 - 總金額:', total);
+      
       if (total <= 0) {
         alert('所選項目已付清,無需付款');
         return;
@@ -6198,7 +6312,8 @@
       
       try {
         const res = await callAPI('checkDailyFortune', { phone: String(user.phone) });
-
+        console.log('checkFortuneStatus 回應:', res);
+        
         if (res && res.success) {
           if (!res.hasDrawn) {
             // 今天還沒抽過，可以抽籤
@@ -6225,7 +6340,7 @@
     async function playFortune() {
       // 🔑 防止重複點擊
       if (isDrawing) {
-
+        console.log('⚠️ 正在抽籤中,請勿重複點擊');
         return;
       }
       
@@ -6238,11 +6353,13 @@
       
       isDrawing = true; // 🔒 上鎖
       const phoneStr = String(user.phone);
-
+      console.log('🎴 開始抽籤流程, 電話:', phoneStr);
+      
       // 🔑 先檢查今天是否已抽過
       try {
         const checkRes = await callAPI('checkDailyFortune', { phone: phoneStr });
-
+        console.log('checkDailyFortune 回應:', checkRes);
+        
         if (checkRes && checkRes.success && checkRes.hasDrawn) {
           alert('⚠️ ' + (checkRes.message || '今天已經抽過了'));
           // 顯示之前的結果
@@ -6265,7 +6382,8 @@
       // 🔑 立即抽出結果並儲存(在動畫開始前)
       const randomIndex = Math.floor(Math.random() * fortuneList.length);
       const result = fortuneList[randomIndex];
-
+      console.log('🎲 抽到:', result.title);
+      
       // 🔑 先儲存到後端,確保記錄成功才播放動畫
       try {
         const saveRes = await callAPI('saveDailyFortune', {
@@ -6273,7 +6391,8 @@
           nickname: user.nickname || '',
           result: result.title
         });
-
+        console.log('saveDailyFortune 回應:', saveRes);
+        
         if (!saveRes || !saveRes.success) {
           alert('⚠️ 系統忙碌中，請稍後再試');
           isDrawing = false; // 🔓 解鎖
@@ -6348,11 +6467,15 @@
         list.innerHTML = '<div style="text-align:center;padding:60px 20px;"><p style="color:#ff9800;font-size:16px;">⚠️ 請先登入以查看出貨紀錄</p></div>';
         return;
       }
-
+      
+      console.log('載入出貨紀錄,電話:', user.phone);
+      
       list.innerHTML = '<div style="text-align:center;padding:60px 20px;"><div class="loader" style="display:inline-block;margin-bottom:15px;"></div><p style="color:#666;font-size:16px;margin:0;">載入出貨紀錄中...</p></div>';
       
       var res = await callAPI('getShipmentRecords', { phone: user.phone });
-
+      
+      console.log('getShipmentRecords 回應:', res);
+      
       if (!res || !res.success) {
         var errorMsg = '載入失敗';
         if (res && res.message) errorMsg += ': ' + res.message;
@@ -6362,14 +6485,19 @@
       }
       
       var records = res.records || [];
-
+      
+      console.log('排序前的出貨紀錄:', records.map(r => ({ no: r.shipmentNumber, date: r.shipmentDate })));
+      
       // 依照日期排序，最新的在最上面
       records.sort(function(a, b) {
         var dateA = new Date(a.shipmentDate || a.shipment_date);
         var dateB = new Date(b.shipmentDate || b.shipment_date);
         return dateB - dateA;
       });
-
+      
+      console.log('排序後的出貨紀錄:', records.map(r => ({ no: r.shipmentNumber, date: r.shipmentDate })));
+      console.log('出貨紀錄數量:', records.length);
+      
       if (records.length === 0) {
         var debugInfo = res.debug ? '<p style="color:#999;font-size:12px;margin-top:10px;">除錯: ' + res.debug + '</p>' : '';
         list.innerHTML = '<div style="text-align:center;padding:60px 20px;"><p style="color:#999;font-size:16px;">📦 目前還沒有出貨紀錄</p><p style="color:#999;font-size:14px;margin-top:10px;">商品出貨後會顯示在這裡</p>' + debugInfo + '</div>';
@@ -6456,9 +6584,9 @@
 
       if (p && b && localStorage.getItem('ning_remember') === 'true') {
         setTimeout(async () => {
-
+          console.log('🔐 開始自動登入...');
           const res = await callAPI('getOrderInfo', { phone: p, birthday: b });
-
+          console.log('🔐 自動登入 API 回應:', res);
           if (res && res.success) {
             isLoggedIn = true;
             user = res;
@@ -6474,7 +6602,9 @@
             } else {
               user.phone = String(user.phone);
             }
-
+            
+            console.log('✅ 自動登入成功, isLoggedIn:', isLoggedIn, 'user:', user.nickname);
+            
             document.getElementById('sidebarHeader').classList.add('logged-in');
             document.getElementById('sidebarUser').innerText = 'Hi, ' + user.nickname;
             document.getElementById('sidebarStatus').innerText = '✓ 已登入';
@@ -6510,17 +6640,17 @@
             if (psaNickname) psaNickname.value = user.nickname || '';
             if (psaPhone) psaPhone.value = user.phone || '';
           } else {
-
+            console.log('⚠️ 自動登入失敗');
           }
           
           // 🌟 登入完成後才檢查付款返回(確保 isLoggedIn 已設定)
-
+          console.log('🔍 準備檢查付款返回, isLoggedIn:', isLoggedIn);
           await checkEcpayReturn();
           
           loadCatalog();
         }, 100);
       } else {
-
+        console.log('⚠️ 無自動登入資料');
         // 🌟 未自動登入時也要檢查付款返回
         checkEcpayReturn();
         loadCatalog();
